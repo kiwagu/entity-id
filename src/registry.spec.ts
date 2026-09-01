@@ -185,6 +185,52 @@ describe('per-kind toolkit', () => {
   });
 });
 
+describe('lazy schema members', () => {
+  // The Zod-backed members are getters so `defineEntityPrefixes` does not build
+  // two schemas per kind up front. Caching must be per member and per kind, and
+  // identity must be stable — a schema rebuilt on every access would break
+  // `z.infer` narrowing and any Map keyed by it.
+  it('returns a stable instance across accesses', () => {
+    const registry = defineEntityPrefixes({ user: 'usr' });
+    const first = registry.ids.user.schema;
+    expect(registry.ids.user.schema).toBe(first);
+  });
+
+  it('caches prefixSchema separately from schema', () => {
+    const registry = defineEntityPrefixes({ user: 'usr' });
+    const schema = registry.ids.user.schema;
+    const prefixSchema = registry.ids.user.prefixSchema;
+    expect(prefixSchema).not.toBe(schema);
+    expect(registry.ids.user.prefixSchema).toBe(prefixSchema);
+    expect(registry.ids.user.schema).toBe(schema);
+  });
+
+  it('keeps each kind independent', () => {
+    const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
+    expect(registry.ids.user.schema).not.toBe(registry.ids.order.schema);
+  });
+
+  it('still parses and rejects correctly through the getter', () => {
+    const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
+    const id = registry.ids.user.create();
+    expect(registry.ids.user.schema.parse(id)).toBe(id);
+    expect(() => registry.ids.order.schema.parse(id)).toThrow();
+  });
+
+  it('emits a JSON Schema built from the same cached instance', () => {
+    const registry = defineEntityPrefixes({ user: 'usr' });
+    const jsonSchema = registry.ids.user.jsonSchema();
+    expect(jsonSchema.pattern).toContain('usr_');
+    expect(registry.ids.user.jsonSchema()).toEqual(jsonSchema);
+  });
+
+  it('leaves the toolkit frozen', () => {
+    // Getters must not have made the object extensible again.
+    const registry = defineEntityPrefixes({ user: 'usr' });
+    expect(Object.isFrozen(registry.ids.user)).toBe(true);
+  });
+});
+
 describe('registry independence', () => {
   it('supports several registries side by side', () => {
     const other = defineEntityPrefixes({ ticket: 'tkt' } as const);

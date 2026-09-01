@@ -396,8 +396,9 @@ module state duplicated across entry points.
 
 | Command | What it proves |
 | --- | --- |
-| `npm run check` | format, lint, types, type-level assertions, 246 unit tests |
-| `npm run verify:package` | the packed tarball works when installed, in ESM **and** CommonJS |
+| `npm run check` | format, lint, types, type-level assertions, 253 unit tests |
+| `npm run verify:package` | the packed tarball works when installed, from ESM **and** CommonJS |
+| `npm run verify:bundle` | a consumer who never touches Zod does not bundle it |
 | `npm run verify:types` | the branded types reject what they must, from a consumer's seat |
 | `npm run verify:browser` | real behaviour in Chromium, including CSPRNG entropy |
 | `npm run examples` | every documented example still runs |
@@ -406,6 +407,37 @@ module state duplicated across entry points.
 
 All of them run in CI, plus a Node matrix (18/20/22/24) and a TypeScript matrix
 (5.4/5.5/5.9/7.0).
+
+## Module format and bundle cost
+
+The package is **ESM only**. Every Node release still receiving security fixes
+implements `require(ESM)`, so a CommonJS file can load it directly:
+
+```js
+const { createEntityId } = require('entity-id'); // works on Node >=20.19
+```
+
+Node 18 cannot — it fails with `ERR_REQUIRE_ESM` — which is what `engines`
+records. Dropping the CommonJS build also removes the dual-package hazard,
+where a consumer could otherwise hold two copies of the module-level validation
+mode and have `entity-id/async` write to one while the validators read another.
+
+Zod is a dependency, but you only bundle it if you use it. The schema and
+registry modules are emitted as their own chunks, so their Zod import does not
+travel with the main entry:
+
+| What you import | Bundled (gzip) | Zod included |
+| --- | --- | --- |
+| `createEntityId`, `isEntityId`, `parseEntityId` | ~2.5 KB | no |
+| `entity-id/schema`, or the registry's `.schema` | ~88 KB | yes |
+
+`npm run verify:bundle` measures this against the packed tarball and fails if
+the main entry ever regains a top-level Zod import.
+
+The registry's `.schema`, `.prefixSchema` and `.jsonSchema` members are lazy —
+built on first access, then cached — so `defineEntityPrefixes` stays cheap for
+an application that only mints and checks ids. Measured on 24 kinds: 0.49 ms to
+build the registry, against 2.13 ms when the schemas were built eagerly.
 
 ## Security
 

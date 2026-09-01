@@ -44,8 +44,8 @@ distinct=$(psql_c -c "select count(distinct public.entity_id_generate('usr')) fr
 
 echo "==> TypeScript ids must pass the SQL CHECK"
 psql_c -c "create table t (id text primary key default public.entity_id_generate('usr') check (public.is_entity_id_with_prefix(id,'usr')));" >/dev/null
-node -e "
-  const { createEntityId } = require('$ROOT/dist/index.cjs');
+node --input-type=module -e "
+  import { createEntityId } from '$ROOT/dist/index.js';
   const rows = [];
   for (let i = 0; i < 50; i++) rows.push(createEntityId('usr'));
   rows.push(createEntityId('usr', { timeMs: 0, monotonic: false }));

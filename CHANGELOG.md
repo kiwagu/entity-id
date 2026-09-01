@@ -23,6 +23,22 @@ First public release.
   entry point so the main one remains isomorphic.
 - `withValidationMode` now throws a `TypeError` when handed an `async`
   function, instead of silently restoring the mode at the first `await`.
+- **ESM only.** Every Node release still receiving security fixes implements
+  `require(ESM)`, so a CommonJS consumer loads the package directly; `engines`
+  is `>=20.19`, the floor where that works (Node 18 fails with
+  `ERR_REQUIRE_ESM`, verified against real runtimes). This removes 32 build
+  artifacts (~268 KB unpacked, tarball 114.9 KB to 70.9 KB) and the
+  dual-package hazard around the module-level validation mode.
+- `entity-id/schema` and `entity-id/registry` subpath entry points, added
+  alongside the existing main-entry re-exports — nothing moved, so no import
+  breaks. They exist so the build emits those modules as separate chunks:
+  previously their top-level Zod import was inlined into `dist/index.js`, and
+  `import { createEntityId }` cost ~88 KB gzip in a consumer bundle. It now
+  costs ~2.5 KB. `scripts/verify-bundle.mjs` (`npm run verify:bundle`) measures
+  this against the packed tarball and fails if the cost returns.
+- The registry's `.schema`, `.prefixSchema` and `.jsonSchema` members are built
+  lazily on first access and cached, so `defineEntityPrefixes` no longer builds
+  two Zod schemas per kind up front: 0.49 ms against 2.13 ms for 24 kinds.
 - Optional chronological ordering in PostgreSQL without adding a column: the
   migration installs the immutable `public.entity_id_ts_of`, and
   `entityIdTimeIndexSql` / `entityIdTimeOrderSql` in `entity-id/sql` render the

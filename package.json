@@ -1,7 +1,7 @@
 {
   "name": "entity-id",
   "version": "1.0.0",
-  "description": "Readable, prefixed IDs that TypeScript won't let you mix up — a usr_ id is never an ord_ id, and the compiler agrees. Zod validation, a prefix registry, and matching Postgres SQL that mints the same format. Works in Node, Bun, Deno, workers and the browser.",
+  "description": "Readable, prefixed IDs that TypeScript won't let you mix up — a usr_ id is never an ord_ id, and the compiler agrees. Zod validation, a prefix registry, and matching Postgres SQL that mints the same format. ESM-only, ~2.5 KB if you skip the schemas.",
   "keywords": [
     "id",
     "identifier",
@@ -31,10 +31,10 @@
   "type": "module",
   "sideEffects": false,
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
   "bin": {
-    "entity-id": "./dist/cli.cjs"
+    "entity-id": "./dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -43,20 +43,27 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
       "default": "./dist/index.js"
     },
     "./async": {
       "types": "./dist/async.d.ts",
       "import": "./dist/async.js",
-      "require": "./dist/async.cjs",
       "default": "./dist/async.js"
     },
     "./sql": {
       "types": "./dist/sql.d.ts",
       "import": "./dist/sql.js",
-      "require": "./dist/sql.cjs",
       "default": "./dist/sql.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
+    },
+    "./registry": {
+      "types": "./dist/registry.d.ts",
+      "import": "./dist/registry.js",
+      "default": "./dist/registry.js"
     },
     "./entity_id_generate.sql": "./sql/entity_id_generate.sql",
     "./package.json": "./package.json"
@@ -91,7 +98,8 @@
     "examples": "node scripts/run-examples.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "verify:types": "tsc --noEmit -p types-test/tsconfig.json",
-    "verify:browser": "node scripts/verify-browser.mjs"
+    "verify:browser": "node scripts/verify-browser.mjs",
+    "verify:bundle": "node scripts/verify-bundle.mjs"
   },
   "dependencies": {
     "ulid": "^3.0.2",

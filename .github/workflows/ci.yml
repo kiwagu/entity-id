@@ -12,7 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [18, 20, 22, 24]
+        # Node 18 and 20 are past end-of-life. The package is ESM-only, and
+        # a CommonJS consumer reaches it through `require(ESM)`, which needs
+        # >=20.19 — 18 fails with ERR_REQUIRE_ESM.
+        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,6 +44,11 @@ jobs:
         # faults: a wrong exports map, a missing file, or module state
         # duplicated across entry points.
         run: node scripts/verify-package.mjs
+      - name: Verify a consumer who never touches Zod does not bundle it
+        # A build-level property: if schema.ts stops being its own chunk, its
+        # top-level Zod import lands in dist/index.js and every consumer pays
+        # ~88 KB gzip. Unit tests import from src/ and cannot see this.
+        run: npm run verify:bundle
       - name: Verify the branded types from a consumer's seat
         # Every @ts-expect-error here asserts something that must NOT compile;
         # if the branding weakens, this step fails.

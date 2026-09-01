@@ -165,7 +165,19 @@ function makeToolkit<
   TMap extends EntityPrefixMap,
   K extends keyof TMap & string,
 >(kind: K, prefix: TMap[K]): EntityIdToolkit<TMap, K> {
-  const schema = brandedEntityIdSchema<K>(prefix);
+  // The three Zod-backed members are lazy. Building them eagerly would put a
+  // top-level Zod call on the path of every `defineEntityPrefixes`, so an
+  // application that only mints and checks ids would still pay for the whole
+  // validator library in its bundle. As getters, the cost arrives with the
+  // first access and never for a consumer who does not use schemas.
+  let cached: EntityIdSchema<K> | undefined;
+  const schemaOf = (): EntityIdSchema<K> => {
+    cached ??= brandedEntityIdSchema<K>(prefix);
+    return cached;
+  };
+
+  let cachedPrefixSchema: EntityIdSchema<K> | undefined;
+
   return Object.freeze({
     kind,
     prefix,
@@ -179,10 +191,15 @@ function makeToolkit<
     assert: (value: string, options?: ValidationOptions) =>
       assertEntityIdWithPrefix(value, prefix, options) as EntityIdOf<TMap, K>,
     brand: (value: string) => unsafeBrandEntityId<K>(value),
-    schema,
-    prefixSchema: prefixGatedEntityIdSchema<K>(prefix),
+    get schema(): EntityIdSchema<K> {
+      return schemaOf();
+    },
+    get prefixSchema(): EntityIdSchema<K> {
+      cachedPrefixSchema ??= prefixGatedEntityIdSchema<K>(prefix);
+      return cachedPrefixSchema;
+    },
     jsonSchema: (io: 'input' | 'output' = 'output') =>
-      entityIdJsonSchema(schema as never, io),
+      entityIdJsonSchema(schemaOf() as never, io),
   });
 }
 
