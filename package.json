@@ -1,7 +1,7 @@
 {
   "name": "entity-id",
   "version": "1.0.0",
-  "description": "Readable, prefixed IDs that TypeScript won't let you mix up — a usr_ id is never an ord_ id, and the compiler agrees. Zod validation, a prefix registry, and matching Postgres SQL that mints the same format. ESM-only, ~2.5 KB if you skip the schemas.",
+  "description": "A DX-friendly entity ID toolkit: prefixed, self-describing IDs with branded TypeScript types, Zod schemas, a prefix registry and a matching Postgres generator. Isomorphic and ESM-only; ~3 KB until you import the schemas.",
   "keywords": [
     "id",
     "identifier",
