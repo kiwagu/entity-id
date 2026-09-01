@@ -235,14 +235,14 @@ Generation runs at **~2.0 M ids/s** (monotonic, the default), against 10.8 M/s
 for `crypto.randomUUID()` — the gap is the price of an embedded timestamp and a
 prefix.
 
-> **Note on `{ monotonic: false }`:** that path currently runs at ~42 K ids/s,
-> because the underlying `ulid` library re-seeds its CSPRNG on every call. The
-> default monotonic path is unaffected. Avoid `monotonic: false` in a hot loop.
+> **Note on `{ monotonic: false }`:** that path runs at ~42 K ids/s, because
+> the underlying `ulid` library re-seeds its CSPRNG on every call. The default
+> monotonic path is unaffected. Avoid `monotonic: false` in a hot loop.
 
 ## Design trade-offs
 
-Two decisions are deliberate, and worth stating plainly rather than leaving to
-be discovered:
+Three decisions are deliberate, and worth stating plainly rather than leaving
+to be discovered:
 
 **The id string is not chronologically sortable.** The randomness segment comes
 before the timestamp, so `ORDER BY id` is not `ORDER BY created_at`. Formats
@@ -256,6 +256,13 @@ index hot-spotting on insert. Sort chronologically with
 stops. Most id bugs in practice are a wrong-*kind* id reaching the wrong slot —
 not a corrupted ULID segment — and that is exactly what the prefix catches, at a
 fraction of the cost of full validation.
+
+**Randomness comes from `ulid`, not from hand-written crypto.** A buffered
+CSPRNG pool of our own would make the `monotonic: false` path roughly 87×
+faster and remove a dependency. It is not worth it: generating randomness is
+security-sensitive, and a widely-used, audited implementation is preferable to
+in-house code on the one path where a subtle mistake would be both silent and
+serious. The speed of the default monotonic path was never in question.
 
 ## Ordering
 
