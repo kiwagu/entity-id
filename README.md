@@ -291,6 +291,48 @@ different modes do not interfere. The module is a separate entry point because
 it imports `node:async_hooks`; the main entry point stays isomorphic and works
 in the browser.
 
+#### Why there is no browser version
+
+Not an oversight: the browser has no primitive for it. Carrying a value across
+`await` boundaries requires the runtime to propagate a context through every
+microtask and timer, and no engine exposes that today.
+
+- **`AsyncLocalStorage`** is a Node API (also in Bun and Deno). It is not part
+  of the web platform.
+- **`AsyncContext`**, the TC39 proposal that would fix this, is at **Stage 2**
+  and ships in no browser — verified against Chrome 151, where
+  `typeof AsyncContext === 'undefined'`.
+- **Userland emulation** means monkey-patching every async API: `setTimeout`,
+  `Promise`, `fetch`, event listeners. That is what `zone.js` does, at roughly
+  1.7 MB unpacked, and it still misses anything it has not patched — far too
+  much weight for a validation mode.
+
+Without such a primitive the naive approach does not merely fail, it fails
+*silently*: a plain variable is restored the moment the callback suspends, so
+concurrent flows read whatever the last writer left behind. That is exactly why
+the synchronous `withValidationMode` throws on an `async` function rather than
+pretending to work.
+
+In practice this rarely bites in a browser, where there is one user and little
+genuine concurrency:
+
+- `setValidationMode` at startup works fine, and
+- the per-call `{ mode }` option works **everywhere**, needing no ambient
+  context at all.
+
+If a future browser ships `AsyncContext` — or you already run a scope provider
+of your own — you can wire it up yourself; the hook is public:
+
+```ts
+import { setAmbientModeResolver } from 'entity-id';
+
+const modeVar = new AsyncContext.Variable();
+setAmbientModeResolver(() => modeVar.get());
+```
+
+The core consults your provider first and falls back to the process-wide
+setting, exactly as `entity-id/async` does.
+
 The **per-call `{ mode }` option is safest of all** and needs no scope: it
 travels with the call, so no amount of interleaving can race it.
 

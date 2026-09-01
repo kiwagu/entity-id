@@ -17,6 +17,7 @@ import {
   getModeProfile,
   getValidationMode,
   resetValidationMode,
+  setAmbientModeResolver,
   setValidationMode,
   type ValidationMode,
   withValidationMode,
@@ -278,6 +279,46 @@ describe('mode-independent behaviour', () => {
       expect(registry.kindOf(registry.ids.user.create())).toBe('user');
       expect(registry.kindOf('zzz_whatever')).toBeUndefined();
     });
+  });
+});
+
+describe('setAmbientModeResolver', () => {
+  // The extension point documented for browsers, where no AsyncLocalStorage
+  // exists: a consumer can plug in their own scope provider (a future
+  // AsyncContext.Variable, or anything else) and the core will consult it.
+  afterEach(() => {
+    setAmbientModeResolver(undefined);
+  });
+
+  it('lets a custom provider supply the mode', () => {
+    let current: ValidationMode | undefined;
+    setAmbientModeResolver(() => current);
+
+    current = 'full';
+    expect(getValidationMode()).toBe('full');
+    expect(isEntityId('usr_not-canonical')).toBe(false);
+
+    current = 'fast';
+    expect(isEntityId('anything')).toBe(true);
+  });
+
+  it('falls back to the process-wide mode when the provider returns nothing', () => {
+    setAmbientModeResolver(() => undefined);
+    setValidationMode('mixed');
+    expect(getValidationMode()).toBe('mixed');
+  });
+
+  it('is still overridden by a per-call mode', () => {
+    setAmbientModeResolver(() => 'fast');
+    expect(isEntityId('nope')).toBe(true);
+    expect(isEntityId('nope', { mode: 'full' })).toBe(false);
+  });
+
+  it('can be uninstalled', () => {
+    setAmbientModeResolver(() => 'full');
+    expect(getValidationMode()).toBe('full');
+    setAmbientModeResolver(undefined);
+    expect(getValidationMode()).toBe('mixed');
   });
 });
 
