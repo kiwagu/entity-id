@@ -388,6 +388,25 @@ prefix.
 > the underlying `ulid` library re-seeds its CSPRNG on every call. The default
 > monotonic path is unaffected. Avoid `monotonic: false` in a hot loop.
 
+## Verification
+
+The package is checked as a **published artifact**, not only as a source tree —
+a green unit-test run cannot see a broken `exports` map, a missing file, or
+module state duplicated across entry points.
+
+| Command | What it proves |
+| --- | --- |
+| `npm run check` | format, lint, types, type-level assertions, 246 unit tests |
+| `npm run verify:package` | the packed tarball works when installed, in ESM **and** CommonJS |
+| `npm run verify:types` | the branded types reject what they must, from a consumer's seat |
+| `npm run verify:browser` | real behaviour in Chromium, including CSPRNG entropy |
+| `npm run examples` | every documented example still runs |
+| `scripts/verify-sql-crosscheck.sh` | SQL and TypeScript agree, against a live PostgreSQL |
+| `npm run bench` | throughput per mode, against `ulid` and `randomUUID` baselines |
+
+All of them run in CI, plus a Node matrix (18/20/22/24) and a TypeScript matrix
+(5.4/5.5/5.9/7.0).
+
 ## Security
 
 The package is a validator, so it is expected to meet hostile input. What it

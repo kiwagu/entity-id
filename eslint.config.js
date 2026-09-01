@@ -53,5 +53,13 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    // The bodies passed to page.evaluate() run in the BROWSER, not in Node,
+    // so this file legitimately references browser globals.
+    files: ['scripts/verify-browser.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
   prettier
 );

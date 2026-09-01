@@ -85,11 +85,13 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run sql:codegen && npm run format:check && npm run lint && npm run typecheck && npm run test",
+    "check": "npm run sql:codegen && npm run format:check && npm run lint && npm run typecheck && npm run verify:types && npm run test",
     "prepublishOnly": "npm run clean && npm run check && npm run build",
     "bench": "tsx bench/throughput.bench.ts",
     "examples": "node scripts/run-examples.mjs",
-    "verify:package": "node scripts/verify-package.mjs"
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify:types": "tsc --noEmit -p types-test/tsconfig.json",
+    "verify:browser": "node scripts/verify-browser.mjs"
   },
   "dependencies": {
     "ulid": "^3.0.2",
@@ -102,6 +104,7 @@
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.12.0",
+    "playwright": "^1.62.1",
     "prettier": "^3.6.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",

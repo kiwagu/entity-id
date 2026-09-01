@@ -41,8 +41,28 @@ jobs:
         # faults: a wrong exports map, a missing file, or module state
         # duplicated across entry points.
         run: node scripts/verify-package.mjs
+      - name: Verify the branded types from a consumer's seat
+        # Every @ts-expect-error here asserts something that must NOT compile;
+        # if the branding weakens, this step fails.
+        run: npm run verify:types
       - name: Run the examples
         run: npm run examples
+
+  browser:
+    # The package claims to be isomorphic. This proves it in a real engine,
+    # asserting behaviour (distinct ids from the platform CSPRNG) rather than
+    # merely that the module loaded.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run verify:browser
 
   typescript-matrix:
     # The declarations must keep working across the TypeScript versions

@@ -62,6 +62,14 @@ First public release.
 - `scripts/verify-package.mjs` (`npm run verify:package`): installs the packed
   tarball into throwaway ESM and CommonJS projects and exercises the public API
   there, so bundling faults cannot reach a release.
+- `types-test/consumer.ts` (`npm run verify:types`): compile-time assertions
+  from a consumer's seat. Each `@ts-expect-error` pins something that must NOT
+  compile — a plain string is not an `EntityId`, two kinds are not
+  interchangeable — and stops erroring loudly if the branding ever weakens.
+- `scripts/verify-browser.mjs` (`npm run verify:browser`): bundles the packed
+  tarball with esbuild and runs it in Playwright Chromium, asserting behaviour
+  (5000 distinct ids from the platform CSPRNG) rather than just that the module
+  loads. Skips cleanly when Playwright is absent.
 
 ### Security
 
