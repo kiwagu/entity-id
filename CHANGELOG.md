@@ -11,6 +11,16 @@ First public release.
 
 ### Added
 
+- Three operating modes — `fast`, `mixed` (default) and `full` — selected
+  globally with `setValidationMode`, scoped with `withValidationMode`, or
+  overridden per call with a `{ mode }` argument. A mode is an extensible
+  profile (`ModeProfile`), so later capabilities can be added without renaming
+  the modes. `strictEntityIdSchema` stays strict regardless of the active mode,
+  and the emitted JSON Schema always advertises the full canonical pattern.
+- `hasWellFormedPrefix`, the `'mixed'`-mode head check, exported for reuse.
+- `bench/throughput.bench.ts` (`npm run bench`): ids per second for generation,
+  validation and decoding in every mode, against `ulid` and `crypto.randomUUID`
+  baselines.
 - `createEntityId`, `fromUlid` and `unsafeBrandEntityId` for minting ids in the
   `<prefix>_<rand16>.<ts10>` format.
 - Branded types `EntityId` and `BrandedEntityId<Brand>`, so a plain string is

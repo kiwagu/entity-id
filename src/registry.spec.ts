@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import { createEntityId, type EntityId } from './entity-id.js';
+import { withValidationMode } from './mode.js';
 import { EntityIdError } from './prefix.js';
 import { defineEntityPrefixes, type EntityIdOf } from './registry.js';
 
@@ -78,19 +79,33 @@ describe('registry lookups', () => {
 
   it('kindOf returns undefined for an unregistered or malformed id', () => {
     expect(registry.kindOf(createEntityId('zzz'))).toBeUndefined();
-    expect(registry.kindOf('usr_not-canonical')).toBeUndefined();
     expect(registry.kindOf('no-underscore')).toBeUndefined();
     expect(registry.kindOf('')).toBeUndefined();
     expect(registry.kindOf('_leading')).toBeUndefined();
+    // A registered prefix with a non-canonical body routes in 'mixed' (the
+    // prefix is what routing needs) but not under full validation.
+    expect(registry.kindOf('usr_not-canonical')).toBe('user');
+    withValidationMode('full', () => {
+      expect(registry.kindOf('usr_not-canonical')).toBeUndefined();
+    });
   });
 
   it('assertKnown accepts a registered id and rejects others', () => {
     const id = registry.ids.order.create();
     expect(registry.assertKnown(id)).toBe(id);
+    // An unregistered prefix is rejected in every mode: that check is the
+    // registry's own, not the validator's.
     expect(() => registry.assertKnown(createEntityId('zzz'))).toThrow(
       /Unregistered entity prefix/
     );
-    expect(() => registry.assertKnown('usr_broken')).toThrow(EntityIdError);
+    withValidationMode('fast', () => {
+      expect(() => registry.assertKnown(createEntityId('zzz'))).toThrow(
+        /Unregistered entity prefix/
+      );
+    });
+    withValidationMode('full', () => {
+      expect(() => registry.assertKnown('usr_broken')).toThrow(EntityIdError);
+    });
   });
 });
 

@@ -7,6 +7,7 @@ import {
   isEntityIdWithPrefix,
   unsafeBrandEntityId,
 } from './entity-id.js';
+import { type ValidationOptions } from './mode.js';
 import { EntityIdError, normalizePrefix, PREFIX_RE } from './prefix.js';
 import {
   brandedEntityIdSchema,
@@ -72,15 +73,21 @@ export type EntityIdToolkit<
    * @param options - See {@link CreateEntityIdOptions}.
    */
   create: (options?: CreateEntityIdOptions) => EntityIdOf<TMap, K>;
-  /** Runtime type guard narrowing to this kind's branded id. */
-  is: (value: unknown) => value is EntityIdOf<TMap, K>;
   /**
-   * Throwing assert returning the normalized, branded id — the
-   * parse-at-the-boundary entry point.
+   * Runtime type guard narrowing to this kind's branded id. Strictness follows
+   * the active mode; pass `{ mode }` to override it for one call.
+   */
+  is: (
+    value: unknown,
+    options?: ValidationOptions
+  ) => value is EntityIdOf<TMap, K>;
+  /**
+   * Throwing assert returning the branded id — the parse-at-the-boundary entry
+   * point. Strictness follows the active mode.
    *
    * @throws {EntityIdError} When the value is not an id of this kind.
    */
-  assert: (value: string) => EntityIdOf<TMap, K>;
+  assert: (value: string, options?: ValidationOptions) => EntityIdOf<TMap, K>;
   /**
    * Cast a string to this kind's branded id with **no** runtime validation.
    * For trusted construction only.
@@ -154,10 +161,13 @@ function makeToolkit<
     prefix,
     create: (options?: CreateEntityIdOptions) =>
       createEntityId(prefix, options) as EntityIdOf<TMap, K>,
-    is: (value: unknown): value is EntityIdOf<TMap, K> =>
-      isEntityIdWithPrefix(value, prefix),
-    assert: (value: string) =>
-      assertEntityIdWithPrefix(value, prefix) as EntityIdOf<TMap, K>,
+    is: (
+      value: unknown,
+      options?: ValidationOptions
+    ): value is EntityIdOf<TMap, K> =>
+      isEntityIdWithPrefix(value, prefix, options),
+    assert: (value: string, options?: ValidationOptions) =>
+      assertEntityIdWithPrefix(value, prefix, options) as EntityIdOf<TMap, K>,
     brand: (value: string) => unsafeBrandEntityId<K>(value),
     schema,
     prefixSchema: prefixGatedEntityIdSchema<K>(prefix),
@@ -260,6 +270,8 @@ export function defineEntityPrefixes<const TMap extends EntityPrefixMap>(
       if (underscore < 1) return undefined;
       const prefix = value.slice(0, underscore);
       if (!seen.has(prefix)) return undefined;
+      // The prefix is registered, which is the routing question. Whether the
+      // remainder is inspected is the mode's decision.
       return isEntityIdWithPrefix(value, prefix)
         ? kindForPrefix(prefix)
         : undefined;

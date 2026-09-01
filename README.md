@@ -168,6 +168,95 @@ entityIdJsonSchema(entityIdSchema, 'input');  // permissive: accepts mixed case
 Use `'input'` for request payloads and `'output'` for responses — an OpenAPI
 document or an MCP tool contract can embed either directly.
 
+## Validation modes
+
+Validation is a trade-off, so the package lets you pick where you sit on it.
+The mode is global, set once at startup, and overridable per call.
+
+```ts
+import { setValidationMode, isEntityId } from 'entity-id';
+
+setValidationMode('full');           // process-wide, at startup
+isEntityId(value, { mode: 'fast' }); // just this call
+```
+
+| Mode | Checks | Cost | Use it for |
+| --- | --- | --- | --- |
+| `fast` | nothing | ~8 ns | data already known good — rows from a column with the `CHECK`, ids this process minted |
+| `mixed` *(default)* | the `<prefix>_` head | ~28 ns | **where business logic starts** — catches a wrong-kind id in the wrong slot |
+| `full` | prefix, both segment lengths, the Crockford alphabet, overall shape | ~63 ns | trust boundaries — HTTP requests, webhooks, imports |
+
+A mode is a *profile*, not merely a strictness level: it also selects the
+decoding path (`fast` and `mixed` split the string; `full` matches the regular
+expression). Future capabilities will be added as further fields of that
+profile, so the three names stay stable.
+
+### What a mode does not change
+
+Some guarantees are structural and hold in every mode:
+
+- **`createEntityId` always mints a canonical id.** There is nothing to
+  validate when you are the one generating.
+- **`normalizeEntityId` is always strict.** It *produces* the canonical form,
+  so it cannot trust an unvalidated input.
+- **The registry always rejects a duplicate prefix**, at startup. That check
+  costs nothing at runtime and prevents an un-routable id, so tying it to a
+  performance setting would be the wrong coupling.
+- **`kindOf` always routes on a registered prefix**; the mode only decides
+  whether the remainder is inspected too.
+- **`strictEntityIdSchema`** ignores the active mode, for the one boundary that
+  must stay strict inside an otherwise-fast application.
+
+### The honest caveat about `fast`
+
+In `fast` mode `assert()` returns a branded value **without checking it**. The
+brand normally means "this was validated"; in `fast` that promise is transferred
+to you. Use it only where the data provenance already guarantees the format.
+`mixed` exists precisely so that the default is safe.
+
+### JSON Schema is unaffected
+
+The emitted JSON Schema always advertises the complete canonical pattern,
+whatever the active mode. A mode is a local performance decision; a published
+contract must describe the format as it really is.
+
+## Performance
+
+Measured on Node 26 / linux-x64 (`npm run bench` — numbers are hardware-specific;
+the ratios are the point):
+
+| Operation | `fast` | `mixed` | `full` |
+| --- | --- | --- | --- |
+| `isEntityId` | 132 M/s | 36 M/s | 16 M/s |
+| `assertEntityIdWithPrefix` | 97 M/s | 13 M/s | 1.4 M/s |
+| `parseEntityId` | 7.6 M/s | 7.6 M/s | 2.0 M/s |
+
+Generation runs at **~2.0 M ids/s** (monotonic, the default), against 10.8 M/s
+for `crypto.randomUUID()` — the gap is the price of an embedded timestamp and a
+prefix.
+
+> **Note on `{ monotonic: false }`:** that path currently runs at ~42 K ids/s,
+> because the underlying `ulid` library re-seeds its CSPRNG on every call. The
+> default monotonic path is unaffected. Avoid `monotonic: false` in a hot loop.
+
+## Design trade-offs
+
+Two decisions are deliberate, and worth stating plainly rather than leaving to
+be discovered:
+
+**The id string is not chronologically sortable.** The randomness segment comes
+before the timestamp, so `ORDER BY id` is not `ORDER BY created_at`. Formats
+like [TypeID](https://github.com/jetify-com/typeid) make the opposite choice and
+are K-sortable. The reason for this one: ids that begin with random bytes spread
+across a B-tree instead of all landing on its right-hand edge, which avoids
+index hot-spotting on insert. Sort chronologically with
+`compareEntityIds(a, b, 'time')`, or order by a `created_at` column.
+
+**The default validates, but not exhaustively.** `mixed` checks the prefix and
+stops. Most id bugs in practice are a wrong-*kind* id reaching the wrong slot —
+not a corrupted ULID segment — and that is exactly what the prefix catches, at a
+fraction of the cost of full validation.
+
 ## Ordering
 
 The randomness segment precedes the timestamp, so an id string is **not**
@@ -257,8 +346,13 @@ npx entity-id sql                  # print the migration
 `unsafeBrandEntityId(value)`
 
 **Validating** — `isEntityId`, `isEntityIdWithPrefix`, `assertEntityId`,
-`assertEntityIdWithPrefix`, `entityIdSchema`, `entityIdWithPrefixSchema`,
-`brandedEntityIdSchema`, `prefixGatedEntityIdSchema`, `toEntityId`
+`assertEntityIdWithPrefix`, `hasWellFormedPrefix`, `entityIdSchema`,
+`strictEntityIdSchema`, `entityIdWithPrefixSchema`, `brandedEntityIdSchema`,
+`prefixGatedEntityIdSchema`, `toEntityId`
+
+**Modes** — `setValidationMode`, `getValidationMode`, `resetValidationMode`,
+`withValidationMode`, `getModeProfile`, `resolveModeProfile`, and the types
+`ValidationMode`, `ValidationDepth`, `ValidationOptions`, `ModeProfile`
 
 **Inspecting** — `parseEntityId`, `safeParseEntityId`, `normalizeEntityId`,
 `entityIdPrefix`, `entityIdToTimeMs`, `entityIdToDate`, `entityIdToIso`,
@@ -275,6 +369,9 @@ npx entity-id sql                  # print the migration
 
 **Types** — `EntityId`, `BrandedEntityId`, `ParsedEntityId`, `EntityIdParts`,
 `CreateEntityIdOptions`, `EntityIdError`
+
+Every validating function takes an optional final `{ mode }` argument that
+overrides the active mode for that one call.
 
 Every error thrown is an `EntityIdError` carrying the offending `value`.
 

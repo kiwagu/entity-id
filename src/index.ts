@@ -66,6 +66,20 @@ export {
 } from './prefix.js';
 
 export {
+  DEFAULT_VALIDATION_MODE,
+  getModeProfile,
+  getValidationMode,
+  type ModeProfile,
+  resetValidationMode,
+  resolveModeProfile,
+  setValidationMode,
+  type ValidationDepth,
+  type ValidationMode,
+  type ValidationOptions,
+  withValidationMode,
+} from './mode.js';
+
+export {
   brandedEntityIdSchema,
   type EntityIdJsonSchema,
   entityIdJsonSchema,
@@ -73,6 +87,7 @@ export {
   entityIdSchema,
   entityIdWithPrefixSchema,
   prefixGatedEntityIdSchema,
+  strictEntityIdSchema,
   toEntityId,
 } from './schema.js';
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   type BrandedEntityId,
   CANONICAL_ENTITY_ID_PATTERN,
+  hasWellFormedPrefix,
   CROCKFORD_CANONICAL_CLASS,
   CROCKFORD_CLASS,
   type EntityId,
@@ -11,6 +12,7 @@ import {
   RAND_LENGTH,
   TS_LENGTH,
 } from './entity-id.js';
+import { resolveModeProfile } from './mode.js';
 import { normalizePrefix } from './prefix.js';
 
 /**
@@ -57,6 +59,70 @@ function buildCodec(
 }
 
 /**
+ * A schema whose runtime strictness follows the active mode, while its JSON
+ * Schema keeps advertising the full canonical pattern.
+ *
+ * The two are deliberately decoupled: a mode is a local performance decision,
+ * whereas the published contract must always describe what the format actually
+ * is. A `'mixed'`-mode service still documents complete ids.
+ */
+function buildModalSchema(
+  prefix: string | undefined,
+  inputPattern: string,
+  outputPattern: string,
+  message: string
+) {
+  const expectedHead = prefix === undefined ? undefined : `${prefix}_`;
+
+  const lenient = z
+    .string()
+    .superRefine((raw: string, ctx: z.RefinementCtx) => {
+      const { validation } = resolveModeProfile();
+      if (validation === 'none') return;
+
+      const value = raw.trim();
+      if (!value) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Entity id must not be empty',
+        });
+        return;
+      }
+      if (expectedHead === undefined) {
+        // No fixed prefix to compare against, so 'mixed' still has to verify
+        // that the head IS a valid prefix — otherwise the mode would accept
+        // any non-empty string.
+        if (!hasWellFormedPrefix(value)) {
+          ctx.addIssue({ code: 'custom', message });
+          return;
+        }
+      } else if (!value.startsWith(expectedHead)) {
+        ctx.addIssue({ code: 'custom', message });
+        return;
+      }
+      if (
+        validation === 'full' &&
+        !new RegExp(`^${inputPattern}$`).test(value)
+      ) {
+        ctx.addIssue({ code: 'custom', message });
+      }
+    })
+    // The pattern is attached as metadata so a mode-aware schema still
+    // serializes to a complete JSON Schema, exactly like the strict codec.
+    .meta({ pattern: `^${inputPattern}$` });
+
+  return z.codec(lenient, z.string().meta({ pattern: `^${outputPattern}$` }), {
+    decode: (raw: string) => {
+      const { validation } = resolveModeProfile();
+      // Only `'full'` normalizes; the cheaper modes hand the value straight
+      // through, which is the point of choosing them.
+      return validation === 'full' ? normalizeEntityId(raw.trim()) : raw;
+    },
+    encode: (canonical: string) => canonical,
+  });
+}
+
+/**
  * The canonical entity-id schema: validates any well-formed id, normalizes it
  * to lowercase, and brands the result as {@link EntityId}.
  *
@@ -73,7 +139,23 @@ function buildCodec(
  *
  * @public
  */
-export const entityIdSchema = buildCodec(
+export const entityIdSchema = buildModalSchema(
+  undefined,
+  ENTITY_ID_PATTERN,
+  CANONICAL_ENTITY_ID_PATTERN,
+  INVALID_ID_MESSAGE
+).brand<'EntityId'>();
+
+/**
+ * The always-strict entity-id schema, unaffected by the active mode.
+ *
+ * Use it at a trust boundary that must stay strict no matter how the process is
+ * configured — parsing a webhook body, say, inside an application that runs in
+ * `'fast'` mode everywhere else.
+ *
+ * @public
+ */
+export const strictEntityIdSchema = buildCodec(
   ENTITY_ID_PATTERN,
   CANONICAL_ENTITY_ID_PATTERN,
   INVALID_ID_MESSAGE
@@ -114,7 +196,8 @@ export type EntityIdSchema<Brand extends string = 'EntityId'> = z.ZodType<
  */
 export function entityIdWithPrefixSchema(prefix: string): EntityIdSchema {
   const normalizedPrefix = normalizePrefix(prefix);
-  return buildCodec(
+  return buildModalSchema(
+    normalizedPrefix,
     `${normalizedPrefix}_${CROCKFORD_CLASS}{${RAND_LENGTH}}\\.${CROCKFORD_CLASS}{${TS_LENGTH}}`,
     `${normalizedPrefix}_${CROCKFORD_CANONICAL_CLASS}{${RAND_LENGTH}}\\.${CROCKFORD_CANONICAL_CLASS}{${TS_LENGTH}}`,
     `Entity id must start with "${normalizedPrefix}_" and match "<prefix>_<rand16>.<ts10>".`

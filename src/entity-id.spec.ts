@@ -156,12 +156,14 @@ describe('parseEntityId', () => {
     const [prefix, body] = id.split('_');
     const mixed = `${prefix}_${(body ?? '').toUpperCase()}`;
     expect(normalizeEntityId(mixed)).toBe(id);
-    expect(parseEntityId(mixed).rand).toBe(parseEntityId(id).rand);
+    expect(parseEntityId(mixed, { mode: 'full' }).rand).toBe(
+      parseEntityId(id, { mode: 'full' }).rand
+    );
   });
 
   it('throws an EntityIdError carrying the offending value', () => {
     try {
-      parseEntityId('not-an-id');
+      parseEntityId('not-an-id', { mode: 'full' });
       expect.unreachable('should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(EntityIdError);
@@ -181,16 +183,17 @@ describe('parseEntityId', () => {
     ['ambiguous letter u', 'usr_tsv4rrffq69g5fau.01arz3ndek'],
     ['leading space', ' usr_tsv4rrffq69g5fav.01arz3ndek'],
     ['one-char prefix', 'u_tsv4rrffq69g5fav.01arz3ndek'],
-  ])('rejects %s', (_label, value) => {
-    expect(isEntityId(value)).toBe(false);
-    expect(() => parseEntityId(value)).toThrow(EntityIdError);
-    expect(safeParseEntityId(value)).toBeUndefined();
+  ])('rejects %s in full mode', (_label, value) => {
+    const full = { mode: 'full' } as const;
+    expect(isEntityId(value, full)).toBe(false);
+    expect(() => parseEntityId(value, full)).toThrow(EntityIdError);
+    expect(safeParseEntityId(value, full)).toBeUndefined();
   });
 
   it('safeParseEntityId returns the decoding instead of throwing', () => {
     const id = createEntityId('usr');
     expect(safeParseEntityId(id)?.prefix).toBe('usr');
-    expect(safeParseEntityId('nope')).toBeUndefined();
+    expect(safeParseEntityId('nope', { mode: 'full' })).toBeUndefined();
   });
 
   it('entityIdPrefix extracts the prefix', () => {
@@ -201,6 +204,7 @@ describe('parseEntityId', () => {
 describe('isEntityId', () => {
   it('narrows a string and rejects non-strings', () => {
     expect(isEntityId(createEntityId('usr'))).toBe(true);
+    expect(isEntityId('not-an-id', { mode: 'full' })).toBe(false);
     expect(isEntityId(42)).toBe(false);
     expect(isEntityId(null)).toBe(false);
     expect(isEntityId(undefined)).toBe(false);
@@ -233,6 +237,9 @@ describe('prefix-aware runtime validation', () => {
     const id = createEntityId('usr');
     expect(assertEntityId(id)).toBe(id);
     expect(() => assertEntityId('nope')).toThrow(EntityIdError);
+    expect(() => assertEntityId('nope', { mode: 'full' })).toThrow(
+      EntityIdError
+    );
   });
 });
 
@@ -300,7 +307,7 @@ describe('compareEntityIds', () => {
       createEntityId('usr', { timeMs: base + offset, monotonic: false })
     );
     const sorted = [...ids].sort((a, b) => compareEntityIds(a, b, 'time'));
-    expect(sorted.map(entityIdToTimeMs)).toEqual([
+    expect(sorted.map((v) => entityIdToTimeMs(v))).toEqual([
       base + 1,
       base + 2,
       base + 3,

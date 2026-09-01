@@ -6,7 +6,14 @@ import {
 } from 'ulid';
 import type { z } from 'zod';
 
-import { EntityIdError, normalizePrefix, PREFIX_PATTERN } from './prefix.js';
+import { resolveModeProfile, type ValidationOptions } from './mode.js';
+import {
+  EntityIdError,
+  normalizePrefix,
+  PREFIX_MAX_LENGTH,
+  PREFIX_MIN_LENGTH,
+  PREFIX_PATTERN,
+} from './prefix.js';
 
 /**
  * An entity id: a prefixed, time-sortable identifier of the form
@@ -68,6 +75,35 @@ export const TS_LENGTH = 10;
 
 const CROCKFORD_BASE32 = new RegExp(`^${CROCKFORD_CLASS}+$`);
 const TS_RE = new RegExp(`^${CROCKFORD_CLASS}{${TS_LENGTH}}$`);
+
+/**
+ * Crockford Base32 decode table, indexed by character code. `-1` marks a
+ * character outside the alphabet. Both cases decode to the same value.
+ */
+const CROCKFORD_DECODE = /* @__PURE__ */ (() => {
+  const alphabet = '0123456789abcdefghjkmnpqrstvwxyz';
+  const table = new Int8Array(128).fill(-1);
+  for (let i = 0; i < alphabet.length; i++) {
+    table[alphabet.charCodeAt(i)] = i;
+    table[alphabet.toUpperCase().charCodeAt(i)] = i;
+  }
+  return table;
+})();
+
+/**
+ * Decode a 10-character Crockford Base32 time segment to milliseconds, with a
+ * direct loop rather than a regular expression and a library call.
+ *
+ * Unknown characters contribute `-1`, so a malformed segment yields a nonsense
+ * number rather than throwing — the caller decides whether to validate first.
+ */
+function decodeTimeSegment(value: string, offset: number): number {
+  let time = 0;
+  for (let i = 0; i < TS_LENGTH; i++) {
+    time = time * 32 + CROCKFORD_DECODE[value.charCodeAt(offset + i)]!;
+  }
+  return time;
+}
 
 /**
  * Anchored pattern for the accepted (input) id shape: mixed-case ULID segments.
@@ -297,74 +333,156 @@ export function createEntityId(
 }
 
 /**
- * Runtime type guard: is the value a well-formed entity id?
+ * Whether a string carries a well-formed prefix followed by an underscore.
+ *
+ * The `'mixed'`-mode check: it inspects the head only, which is where the
+ * mistake that matters in practice shows up — an id of the wrong kind in the
+ * wrong slot.
  *
  * @param value - Candidate string.
- * @returns `true` when the value matches the id contract, narrowing to
- * {@link EntityId}.
+ * @returns `true` when the value begins with a valid prefix and an underscore.
  *
  * @public
  */
-export function isEntityId(value: unknown): value is EntityId {
-  return typeof value === 'string' && ENTITY_ID_RE.test(value);
+export function hasWellFormedPrefix(value: string): boolean {
+  const underscore = value.indexOf('_');
+  if (underscore < PREFIX_MIN_LENGTH || underscore > PREFIX_MAX_LENGTH) {
+    return false;
+  }
+  for (let i = 0; i < underscore; i++) {
+    const code = value.charCodeAt(i);
+    const isLower = code >= 97 && code <= 122;
+    const isDigit = code >= 48 && code <= 57;
+    if (i === 0 ? !isLower : !isLower && !isDigit) return false;
+  }
+  return true;
+}
+
+/**
+ * Runtime type guard: is the value an entity id?
+ *
+ * How thoroughly the value is checked depends on the active mode
+ * ({@link setValidationMode}) or the per-call `mode` override:
+ *
+ * - `'fast'` — no check at all; any string passes.
+ * - `'mixed'` (default) — the value must carry a well-formed `<prefix>_` head.
+ * - `'full'` — the value must match the complete canonical contract.
+ *
+ * @param value - Candidate string.
+ * @param options - Per-call mode override, see {@link ValidationOptions}.
+ * @returns `true` when the value satisfies the mode's rules, narrowing to
+ * {@link EntityId}.
+ *
+ * @example
+ * ```ts
+ * isEntityId(value);                   // per the active mode
+ * isEntityId(value, { mode: 'full' }); // strict, regardless of the active mode
+ * ```
+ *
+ * @public
+ */
+export function isEntityId(
+  value: unknown,
+  options?: ValidationOptions
+): value is EntityId {
+  if (typeof value !== 'string') return false;
+  const { validation } = resolveModeProfile(options);
+  if (validation === 'none') return true;
+  if (validation === 'prefix') return hasWellFormedPrefix(value);
+  return ENTITY_ID_RE.test(value);
 }
 
 /**
  * Runtime type guard for an id carrying a specific prefix, where the prefix is
  * known only at runtime.
  *
+ * The prefix is always compared — that is the point of the function — while the
+ * mode decides whether the rest of the value is inspected as well. In `'fast'`
+ * mode not even the prefix is checked.
+ *
  * @param value - Candidate string.
  * @param prefix - Required entity-type tag.
+ * @param options - Per-call mode override.
  * @returns `true` when the value is an entity id with that prefix.
  *
  * @public
  */
 export function isEntityIdWithPrefix(
   value: unknown,
-  prefix: string
+  prefix: string,
+  options?: ValidationOptions
 ): value is EntityId {
-  return isEntityId(value) && value.startsWith(`${normalizePrefix(prefix)}_`);
+  if (typeof value !== 'string') return false;
+  const { validation } = resolveModeProfile(options);
+  if (validation === 'none') return true;
+  if (!value.startsWith(`${normalizePrefix(prefix)}_`)) return false;
+  return validation === 'prefix' || ENTITY_ID_RE.test(value);
 }
 
 /**
- * Assert that a value is a well-formed entity id and return it normalized.
+ * Assert that a value is an entity id and return it.
+ *
+ * In `'full'` mode the value is validated and normalized to canonical
+ * lowercase. In `'mixed'` mode only the prefix head is checked and the value is
+ * returned as-is. In `'fast'` mode the value is returned unchecked — the brand
+ * is then a claim about the caller's data, not something this function verified.
  *
  * @param value - Candidate string.
- * @returns The normalized, branded id.
- * @throws {EntityIdError} When the value is not an entity id.
+ * @param options - Per-call mode override.
+ * @returns The branded id.
+ * @throws {EntityIdError} When the value fails the mode's rules.
  *
  * @public
  */
-export function assertEntityId(value: string): EntityId {
+export function assertEntityId(
+  value: string,
+  options?: ValidationOptions
+): EntityId {
+  const { validation } = resolveModeProfile(options);
+  if (validation === 'none') return value as EntityId;
+  if (validation === 'prefix') {
+    if (!hasWellFormedPrefix(value)) {
+      throw new EntityIdError(
+        `Expected an entity id with a "<prefix>_" head, got "${String(value)}".`,
+        String(value)
+      );
+    }
+    return value as EntityId;
+  }
   return normalizeEntityId(value);
 }
 
 /**
- * Assert that a value is an entity id carrying `prefix`, and return it
- * normalized.
+ * Assert that a value is an entity id carrying `prefix`, and return it.
  *
  * For a prefix known at compile time, prefer the toolkit produced by
  * `defineEntityPrefixes`, whose `assert` is branded per kind.
  *
  * @param value - Candidate string.
  * @param prefix - Required entity-type tag.
- * @returns The normalized, branded id.
- * @throws {EntityIdError} When the value is not an id with that prefix.
+ * @param options - Per-call mode override.
+ * @returns The branded id, normalized in `'full'` mode.
+ * @throws {EntityIdError} When the value fails the mode's rules.
  *
  * @public
  */
 export function assertEntityIdWithPrefix(
   value: string,
-  prefix: string
+  prefix: string,
+  options?: ValidationOptions
 ): EntityId {
+  const { validation } = resolveModeProfile(options);
+  if (validation === 'none') return value as EntityId;
+
   const normalizedPrefix = normalizePrefix(prefix);
-  if (!isEntityIdWithPrefix(value, normalizedPrefix)) {
+  if (!isEntityIdWithPrefix(value, normalizedPrefix, options)) {
     throw new EntityIdError(
       `Expected an entity id with prefix "${normalizedPrefix}_", got "${String(value)}".`,
       String(value)
     );
   }
-  return normalizeEntityId(value);
+  // The guard above has already narrowed `value` to EntityId.
+  return validation === 'prefix' ? value : normalizeEntityId(value);
 }
 
 /**
@@ -400,7 +518,49 @@ export function unsafeBrandEntityId<Brand extends string = 'EntityId'>(
  *
  * @public
  */
-export function parseEntityId(value: string): ParsedEntityId {
+export function parseEntityId(
+  value: string,
+  options?: ValidationOptions
+): ParsedEntityId {
+  const { fastDecode, validation } = resolveModeProfile(options);
+
+  if (fastDecode) {
+    // Cheap path: locate the two separators and slice, rather than running a
+    // regular expression and materializing named capture groups.
+    const underscore = value.indexOf('_');
+    const dot = value.indexOf('.', underscore + 1);
+
+    if (validation === 'prefix' && !hasWellFormedPrefix(value)) {
+      throw new EntityIdError(INVALID_ID_MESSAGE, value);
+    }
+    if (underscore < 0 || dot < 0) {
+      if (validation === 'none') {
+        // Trusted input that is not an id: return a shaped-but-empty decoding
+        // rather than paying for an error the caller opted out of.
+        return {
+          prefix: value,
+          rand: '',
+          ts: '',
+          ulid: '',
+          timeMs: Number.NaN,
+        };
+      }
+      throw new EntityIdError(INVALID_ID_MESSAGE, value);
+    }
+
+    const prefix = value.slice(0, underscore);
+    const rand = value.slice(underscore + 1, dot);
+    const ts = value.slice(dot + 1);
+
+    return {
+      prefix,
+      rand,
+      ts,
+      ulid: `${ts}${rand}`.toUpperCase(),
+      timeMs: decodeTimeSegment(value, dot + 1),
+    };
+  }
+
   const input = String(value ?? '');
   const match = ENTITY_ID_RE.exec(input);
   if (!match) {
@@ -431,9 +591,12 @@ export function parseEntityId(value: string): ParsedEntityId {
  *
  * @public
  */
-export function safeParseEntityId(value: string): ParsedEntityId | undefined {
+export function safeParseEntityId(
+  value: string,
+  options?: ValidationOptions
+): ParsedEntityId | undefined {
   try {
-    return parseEntityId(value);
+    return parseEntityId(value, options);
   } catch {
     return undefined;
   }
@@ -449,7 +612,9 @@ export function safeParseEntityId(value: string): ParsedEntityId | undefined {
  * @public
  */
 export function normalizeEntityId(value: string): EntityId {
-  const parsed = parseEntityId(value);
+  // Always strict, in every mode: this function PRODUCES the canonical form,
+  // so it cannot trust an unvalidated input the way a guard may choose to.
+  const parsed = parseEntityId(value, { mode: 'full' });
   return `${parsed.prefix}_${parsed.rand}.${parsed.ts}` as EntityId;
 }
 
@@ -462,8 +627,11 @@ export function normalizeEntityId(value: string): EntityId {
  *
  * @public
  */
-export function entityIdPrefix(value: string): string {
-  return parseEntityId(value).prefix;
+export function entityIdPrefix(
+  value: string,
+  options?: ValidationOptions
+): string {
+  return parseEntityId(value, options).prefix;
 }
 
 /**
@@ -507,8 +675,11 @@ export function entityIdToTuple(entityId: string): EntityIdTuple {
  *
  * @public
  */
-export function entityIdToTimeMs(entityId: string): number {
-  return parseEntityId(entityId).timeMs;
+export function entityIdToTimeMs(
+  entityId: string,
+  options?: ValidationOptions
+): number {
+  return parseEntityId(entityId, options).timeMs;
 }
 
 /**
@@ -527,8 +698,11 @@ export const getEntityIdTimeMs = entityIdToTimeMs;
  *
  * @public
  */
-export function entityIdToDate(entityId: string): Date {
-  return new Date(entityIdToTimeMs(entityId));
+export function entityIdToDate(
+  entityId: string,
+  options?: ValidationOptions
+): Date {
+  return new Date(entityIdToTimeMs(entityId, options));
 }
 
 /**
@@ -540,8 +714,11 @@ export function entityIdToDate(entityId: string): Date {
  *
  * @public
  */
-export function entityIdToIso(entityId: string): string {
-  return entityIdToDate(entityId).toISOString();
+export function entityIdToIso(
+  entityId: string,
+  options?: ValidationOptions
+): string {
+  return entityIdToDate(entityId, options).toISOString();
 }
 
 /**

@@ -8,12 +8,14 @@ import {
   normalizeEntityId,
 } from './entity-id.js';
 import { EntityIdError } from './prefix.js';
+import { withValidationMode } from './mode.js';
 import {
   brandedEntityIdSchema,
   entityIdJsonSchema,
   entityIdSchema,
   entityIdWithPrefixSchema,
   prefixGatedEntityIdSchema,
+  strictEntityIdSchema,
   toEntityId,
 } from './schema.js';
 
@@ -23,14 +25,20 @@ describe('entityIdSchema', () => {
     expect(entityIdSchema.parse(id)).toBe(id);
   });
 
-  it('trims and lowercases mixed-case input', () => {
+  it('trims and lowercases mixed-case input in full mode', () => {
     const id = createEntityId('ent');
     const [prefix, body] = id.split('_');
     const mixed = `  ${prefix}_${(body ?? '').toUpperCase()}  `;
-    expect(entityIdSchema.parse(mixed)).toBe(normalizeEntityId(id));
+    withValidationMode('full', () => {
+      expect(entityIdSchema.parse(mixed)).toBe(normalizeEntityId(id));
+    });
+    // The always-strict schema does it regardless of the active mode.
+    expect(strictEntityIdSchema.parse(mixed)).toBe(normalizeEntityId(id));
   });
 
   it('rejects malformed input', () => {
+    // 'not-an-id' has no valid "<prefix>_" head, so even the default
+    // 'mixed' mode rejects it.
     expect(entityIdSchema.safeParse('not-an-id').success).toBe(false);
     expect(entityIdSchema.safeParse('').success).toBe(false);
     expect(entityIdSchema.safeParse('   ').success).toBe(false);
@@ -38,8 +46,17 @@ describe('entityIdSchema', () => {
     expect(entityIdSchema.safeParse(null).success).toBe(false);
   });
 
+  it('rejects a well-prefixed but malformed body only in full mode', () => {
+    const halfValid = 'usr_not-canonical';
+    expect(entityIdSchema.safeParse(halfValid).success).toBe(true);
+    withValidationMode('full', () => {
+      expect(entityIdSchema.safeParse(halfValid).success).toBe(false);
+    });
+    expect(strictEntityIdSchema.safeParse(halfValid).success).toBe(false);
+  });
+
   it('reports a helpful message', () => {
-    const result = entityIdSchema.safeParse('nope');
+    const result = strictEntityIdSchema.safeParse('nope');
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.message).toMatch(
@@ -62,16 +79,31 @@ describe('entityIdWithPrefixSchema', () => {
     expect(schema.safeParse(createEntityId('ord')).success).toBe(false);
   });
 
-  it('still normalizes on the way through', () => {
+  it('normalizes on the way through in full mode', () => {
     const id = createEntityId('usr');
     const [prefix, body] = id.split('_');
     const mixed = `${prefix}_${(body ?? '').toUpperCase()}`;
-    expect(entityIdWithPrefixSchema('usr').parse(mixed)).toBe(id);
+    withValidationMode('full', () => {
+      expect(entityIdWithPrefixSchema('usr').parse(mixed)).toBe(id);
+    });
   });
 
   it('does not accept a prefix that merely shares a head', () => {
     const schema = entityIdWithPrefixSchema('usr');
     expect(schema.safeParse(createEntityId('usrx')).success).toBe(false);
+  });
+
+  it('rejects a swapped kind in every mode except fast', () => {
+    const schema = entityIdWithPrefixSchema('usr');
+    const wrong = createEntityId('ord');
+    for (const mode of ['mixed', 'full'] as const) {
+      withValidationMode(mode, () => {
+        expect(schema.safeParse(wrong).success).toBe(false);
+      });
+    }
+    withValidationMode('fast', () => {
+      expect(schema.safeParse(wrong).success).toBe(true);
+    });
   });
 
   it('rejects an invalid prefix argument eagerly', () => {
@@ -170,9 +202,12 @@ describe('toEntityId', () => {
   it('returns a canonical id or undefined', () => {
     const id = createEntityId('usr');
     expect(toEntityId(id)).toBe(id);
-    expect(toEntityId(id.toUpperCase())).toBeUndefined();
     expect(toEntityId('nope')).toBeUndefined();
     expect(toEntityId(undefined)).toBeUndefined();
     expect(toEntityId(123)).toBeUndefined();
+    // An upper-cased prefix is invalid in every mode that validates.
+    withValidationMode('full', () => {
+      expect(toEntityId(id.toUpperCase())).toBeUndefined();
+    });
   });
 });
