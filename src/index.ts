@@ -1,5 +1,5 @@
 /**
- * `entity-id` — prefixed, time-sortable entity identifiers.
+ * `entity-id` — prefixed, timestamped entity identifiers.
  *
  * An entity id looks like `usr_a1b2c3d4e5f6g7h8.01jd8x2p4q`: a short prefix
  * naming the kind of thing the id points at, then the two halves of a ULID in

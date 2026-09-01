@@ -191,3 +191,37 @@ comment on function public.is_entity_id(text) is
   'True when the text matches the entity-id contract "<prefix>_<rand16>.<ts10>".';
 comment on function public.is_entity_id_with_prefix(text, text) is
   'True when the text is an entity id carrying the given prefix.';
+
+/*
+ * Chronological ordering support.
+ *
+ * The randomness segment precedes the timestamp, so `order by id` is NOT
+ * chronological. This function exposes the fixed-width time suffix, whose
+ * lexicographic order IS chronological order — no decoding needed at query
+ * time. It is `immutable`, so it can back an index:
+ *
+ *   create index events_ts_idx on events (public.entity_id_ts_of(id) desc);
+ *   select * from events order by public.entity_id_ts_of(id) desc limit 50;
+ *
+ * The index is OPTIONAL. A dedicated `created_at` column is still the better
+ * default — it is faster, smaller, and independent of the id format. Reach for
+ * this when adding a column is not practical, on an existing table say.
+ * Returns null for a value carrying no time suffix.
+ */
+create or replace function public.entity_id_ts_of(value text)
+returns text
+language sql
+security invoker
+set search_path = ''
+immutable
+strict
+parallel safe
+as $$
+  select case
+    when position('.' in value) = 0 then null
+    else substring(value from position('.' in value) + 1)
+  end;
+$$;
+
+comment on function public.entity_id_ts_of(text) is
+  'The time suffix of an entity id; lexicographic order over it is chronological. Immutable, so it can back an index.';

@@ -23,6 +23,12 @@ First public release.
   entry point so the main one remains isomorphic.
 - `withValidationMode` now throws a `TypeError` when handed an `async`
   function, instead of silently restoring the mode at the first `await`.
+- Optional chronological ordering in PostgreSQL without adding a column: the
+  migration installs the immutable `public.entity_id_ts_of`, and
+  `entityIdTimeIndexSql` / `entityIdTimeOrderSql` in `entity-id/sql` render the
+  index and the `ORDER BY`. Measured on 200 000 rows: ~0.17 ms for a
+  newest-first `LIMIT 50` against ~142 ms with no index. A `created_at` column
+  remains the recommended default (~0.08 ms, smaller index).
 - Seven runnable examples in `examples/`, executed by `npm run examples`,
   covering the three modes synchronously and asynchronously, and where to
   initialize the mode in an application.

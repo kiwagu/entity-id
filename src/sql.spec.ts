@@ -12,6 +12,8 @@ import {
   entityIdCheckSql,
   entityIdColumnSql,
   entityIdDefaultSql,
+  entityIdTimeIndexSql,
+  entityIdTimeOrderSql,
 } from './sql.js';
 
 /**
@@ -97,6 +99,81 @@ describe('entityIdDefaultSql and entityIdCheckSql', () => {
   it('reject an invalid prefix rather than interpolating it', () => {
     expect(() => entityIdDefaultSql("x'); drop table t; --")).toThrow();
     expect(() => entityIdCheckSql('id', "x'")).toThrow();
+  });
+});
+
+describe('entityIdTimeOrderSql and entityIdTimeIndexSql', () => {
+  it('renders the ordering expression', () => {
+    expect(entityIdTimeOrderSql()).toBe('public.entity_id_ts_of(id)');
+    expect(entityIdTimeOrderSql('event_id')).toBe(
+      'public.entity_id_ts_of(event_id)'
+    );
+  });
+
+  it('renders a re-runnable index statement by default', () => {
+    expect(entityIdTimeIndexSql('events')).toBe(
+      'create index if not exists events_id_ts_idx ' +
+        'on events (public.entity_id_ts_of(id) desc)'
+    );
+  });
+
+  it('honours every option', () => {
+    expect(
+      entityIdTimeIndexSql('events', {
+        column: 'event_id',
+        name: 'custom_idx',
+        direction: 'asc',
+        concurrently: true,
+        ifNotExists: false,
+      })
+    ).toBe(
+      'create index concurrently custom_idx ' +
+        'on events (public.entity_id_ts_of(event_id) asc)'
+    );
+  });
+
+  it('rejects a hostile identifier in any position', () => {
+    expect(() => entityIdTimeIndexSql('events; drop table t')).toThrow(
+      /table name/i
+    );
+    expect(() =>
+      entityIdTimeIndexSql('events', { column: 'id; drop table t' })
+    ).toThrow(/column name/i);
+    expect(() =>
+      entityIdTimeIndexSql('events', { name: 'i; drop table t' })
+    ).toThrow(/index name/i);
+    expect(() => entityIdTimeOrderSql('id; drop table t')).toThrow(
+      /column name/i
+    );
+  });
+
+  it('rejects an invalid direction', () => {
+    expect(() =>
+      entityIdTimeIndexSql('events', {
+        direction: 'sideways' as 'asc' | 'desc',
+      })
+    ).toThrow(/direction/i);
+  });
+
+  it('targets the function the migration installs', () => {
+    // The generated statement is worthless if the migration does not define
+    // the function it calls.
+    expect(ENTITY_ID_SQL).toContain(
+      'create or replace function public.entity_id_ts_of'
+    );
+    expect(ENTITY_ID_SQL).toContain('immutable');
+    expect(entityIdTimeIndexSql('events')).toContain('public.entity_id_ts_of(');
+  });
+
+  it('orders by a suffix whose lexicographic order is chronological', () => {
+    // The property the whole index rests on, asserted in TypeScript so a
+    // format change cannot silently break it.
+    const ids = [0, 1_000, 1_700_000_000_000, 2_000_000_000_000].map((timeMs) =>
+      createEntityId('evt', { timeMs, monotonic: false })
+    );
+    const suffixes = ids.map((id) => id.slice(id.indexOf('.') + 1));
+    const sorted = [...suffixes].sort();
+    expect(sorted).toEqual(suffixes);
   });
 });
 

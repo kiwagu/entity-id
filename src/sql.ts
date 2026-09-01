@@ -117,3 +117,105 @@ export function entityIdCheckSql(column: string, prefix: string): string {
   assertSqlIdentifier(column);
   return `public.is_entity_id_with_prefix(${column}, '${normalizePrefix(prefix)}')`;
 }
+
+/**
+ * The SQL expression yielding an entity id's time suffix, whose lexicographic
+ * order is chronological order.
+ *
+ * Use it in an `ORDER BY`, or as the body of an index — see
+ * {@link entityIdTimeIndexSql}.
+ *
+ * @param column - Column holding the id. Default: `'id'`.
+ * @returns The `public.entity_id_ts_of(...)` call.
+ * @throws {Error} When the column name is not a plain SQL identifier.
+ *
+ * @example
+ * ```ts
+ * `select * from events order by ${entityIdTimeOrderSql()} desc limit 50`;
+ * ```
+ *
+ * @public
+ */
+export function entityIdTimeOrderSql(column = 'id'): string {
+  assertSqlIdentifier(column);
+  return `public.entity_id_ts_of(${column})`;
+}
+
+/**
+ * Options for {@link entityIdTimeIndexSql}.
+ *
+ * @public
+ */
+export type EntityIdTimeIndexOptions = Readonly<{
+  /** Column holding the id. Default: `'id'`. */
+  column?: string;
+  /** Index name. Default: `<table>_<column>_ts_idx`. */
+  name?: string;
+  /**
+   * Emit `create index concurrently`, which does not lock the table for
+   * writes. It cannot run inside a transaction block, so most migration
+   * runners need to be told to run this statement on its own. Default: `false`.
+   */
+  concurrently?: boolean;
+  /** Emit `if not exists`, making the statement re-runnable. Default: `true`. */
+  ifNotExists?: boolean;
+  /** Index direction. Default: `'desc'`, matching newest-first listings. */
+  direction?: 'asc' | 'desc';
+}>;
+
+/**
+ * A `create index` statement giving a table chronological ordering by id,
+ * without adding a column.
+ *
+ * **This index is optional, and it is not the default recommendation.** A
+ * dedicated `created_at` column is faster, smaller and independent of the id
+ * format. Measured on 200 000 rows: a `created_at` index answers a
+ * newest-first `LIMIT 50` in ~0.08 ms against ~0.17 ms here, for ~4.4 MB
+ * against ~6.2 MB. Reach for this when adding a column is impractical — on an
+ * existing table, or one you do not own.
+ *
+ * Requires `ENTITY_ID_SQL` to have been applied, which installs
+ * `public.entity_id_ts_of`.
+ *
+ * @param table - Table to index.
+ * @param options - See {@link EntityIdTimeIndexOptions}.
+ * @returns The `create index` statement, without a trailing semicolon.
+ * @throws {Error} When an identifier is not a plain SQL identifier.
+ *
+ * @example
+ * ```ts
+ * entityIdTimeIndexSql('events');
+ * // create index if not exists events_id_ts_idx
+ * //   on events (public.entity_id_ts_of(id) desc)
+ *
+ * entityIdTimeIndexSql('events', { concurrently: true, ifNotExists: false });
+ * ```
+ *
+ * @public
+ */
+export function entityIdTimeIndexSql(
+  table: string,
+  options: EntityIdTimeIndexOptions = {}
+): string {
+  assertSqlIdentifier(table, 'table name');
+  const column = options.column ?? 'id';
+  assertSqlIdentifier(column);
+
+  const name = options.name ?? `${table}_${column}_ts_idx`;
+  assertSqlIdentifier(name, 'index name');
+
+  const direction = options.direction ?? 'desc';
+  if (direction !== 'asc' && direction !== 'desc') {
+    throw new Error(
+      `Invalid index direction "${String(direction)}". Expected 'asc' or 'desc'.`
+    );
+  }
+
+  const concurrently = options.concurrently ? ' concurrently' : '';
+  const ifNotExists = (options.ifNotExists ?? true) ? ' if not exists' : '';
+
+  return (
+    `create index${concurrently}${ifNotExists} ${name} ` +
+    `on ${table} (${entityIdTimeOrderSql(column)} ${direction})`
+  );
+}

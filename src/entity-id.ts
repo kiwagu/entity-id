@@ -16,7 +16,7 @@ import {
 } from './prefix.js';
 
 /**
- * An entity id: a prefixed, time-sortable identifier of the form
+ * An entity id: a prefixed, timestamped identifier of the form
  * `<prefix>_<rand16>.<ts10>`, where `rand` and `ts` are the two halves of a
  * ULID rendered in lowercase Crockford Base32.
  *

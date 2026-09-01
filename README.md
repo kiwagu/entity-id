@@ -1,6 +1,6 @@
 # entity-id
 
-Prefixed, time-sortable entity identifiers with branded TypeScript types, a Zod
+Prefixed, timestamped entity identifiers with branded TypeScript types, a Zod
 validator and a matching PostgreSQL generator.
 
 ```
@@ -445,8 +445,13 @@ before the timestamp, so `ORDER BY id` is not `ORDER BY created_at`. Formats
 like [TypeID](https://github.com/jetify-com/typeid) make the opposite choice and
 are K-sortable. The reason for this one: ids that begin with random bytes spread
 across a B-tree instead of all landing on its right-hand edge, which avoids
-index hot-spotting on insert. Sort chronologically with
-`compareEntityIds(a, b, 'time')`, or order by a `created_at` column.
+index hot-spotting on insert.
+
+The cost of that choice is bounded and measurable: chronological order needs
+either a `created_at` column or a functional index on the timestamp suffix, and
+both answer in well under a millisecond on 200 000 rows — see
+[Ordering](#ordering). What you trade away is the ability to get that order for
+free from the primary key alone.
 
 **The default validates, but not exhaustively.** `mixed` checks the prefix and
 stops. Most id bugs in practice are a wrong-*kind* id reaching the wrong slot —
@@ -463,7 +468,10 @@ serious. The speed of the default monotonic path was never in question.
 ## Ordering
 
 The randomness segment precedes the timestamp, so an id string is **not**
-chronologically sortable. Sort by the embedded time explicitly:
+chronologically sortable. That is a deliberate trade-off (see below), not a
+dead end — chronological order is available, and cheaply.
+
+In application code, sort by the embedded time explicitly:
 
 ```ts
 import { compareEntityIds } from 'entity-id';
@@ -471,9 +479,45 @@ import { compareEntityIds } from 'entity-id';
 ids.sort((a, b) => compareEntityIds(a, b, 'time'));
 ```
 
-This layout is deliberate: ids beginning with random bytes spread across a
-B-tree instead of all landing on the right-hand edge, which avoids index
-hot-spotting on insert. For list APIs, order by a `created_at` column.
+### In PostgreSQL
+
+Three options, measured on 200 000 rows (PostgreSQL 16, `LIMIT 50`):
+
+| Approach | Latest-first query | Keyset page | Extra storage |
+| --- | --- | --- | --- |
+| `created_at` column + index | 0.08 ms | 0.08 ms | 4.4 MB |
+| Functional index on the timestamp suffix | 0.17 ms | 0.30 ms | 6.2 MB |
+| No index, decode and sort per query | 142 ms | — | none |
+
+**A `created_at` column is the recommendation** — it is the fastest, the
+smallest, and it survives a change of id format.
+
+**A functional index is the cheap alternative** when you would rather not add a
+column — to an existing table, say. It needs no schema change and stays in the
+same order of magnitude. The migration installs `public.entity_id_ts_of`, and
+the `entity-id/sql` entry point renders the statement:
+
+```ts
+import { entityIdTimeIndexSql, entityIdTimeOrderSql } from 'entity-id/sql';
+
+entityIdTimeIndexSql('events');
+// create index if not exists events_id_ts_idx
+//   on events (public.entity_id_ts_of(id) desc)
+
+entityIdTimeIndexSql('events', { concurrently: true, ifNotExists: false });
+// create index concurrently events_id_ts_idx ...
+
+`select * from events order by ${entityIdTimeOrderSql()} desc limit 50`;
+```
+
+The suffix is fixed-width Crockford Base32, so lexicographic order over it *is*
+chronological order — no decoding needed at query time. Measured write cost of
+keeping this index: about 9% on bulk insert (400 ms against 368 ms for 20 000
+rows).
+
+**Sorting without an index is the one genuinely expensive option** — a full scan
+and sort, ~1700× slower than either indexed path. Avoid it outside one-off
+maintenance queries.
 
 ## PostgreSQL
 

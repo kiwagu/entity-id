@@ -23,7 +23,7 @@ import {
 import { derivePrefixFromSlug, normalizePrefix } from './prefix.js';
 import { ENTITY_ID_SQL } from './sql.generated.js';
 
-const HELP = `entity-id — prefixed, time-sortable entity identifiers
+const HELP = `entity-id — prefixed, timestamped entity identifiers
 
 Usage:
   entity-id new [prefix] [--count N]  mint id(s); default prefix "ent"

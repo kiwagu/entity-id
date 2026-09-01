@@ -70,6 +70,10 @@ out.defaultMode = m.getValidationMode();
 out.mixedAcceptsHead = m.isEntityId(HALF);
 out.fullRejectsHead = m.isEntityId(HALF, { mode: 'full' });
 out.sql = s.ENTITY_ID_SQL.includes('entity_id_generate');
+out.tsIndex = s.entityIdTimeIndexSql('events');
+out.tsFn = s.ENTITY_ID_SQL.includes('entity_id_ts_of');
+try { s.entityIdTimeIndexSql('events; drop table t'); out.tsGuard = 'none'; }
+catch { out.tsGuard = 'threw'; }
 
 // The regression this file exists for: a scope must survive an await, and
 // two concurrent scopes must not bleed into each other.
@@ -103,6 +107,13 @@ process.stdout.write(JSON.stringify(out));
     check('mixed accepts a prefixed body', r.mixedAcceptsHead, true);
     check('full rejects it', r.fullRejectsHead, false);
     check('sql entry point loads', r.sql, true);
+    check('migration installs entity_id_ts_of', r.tsFn, true);
+    check(
+      'time index statement renders',
+      r.tsIndex,
+      'create index if not exists events_id_ts_idx on events (public.entity_id_ts_of(id) desc)'
+    );
+    check('time index rejects a hostile table name', r.tsGuard, 'threw');
     check('async scope survives await', r.scopeSurvivesAwait, 'full');
     check('async scope is strict', r.scopeIsStrict, true);
     check('async scope restores', r.scopeRestored, 'mixed');
