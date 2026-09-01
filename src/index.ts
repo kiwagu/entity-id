@@ -85,11 +85,14 @@ export {
   type EntityIdJsonSchema,
   entityIdJsonSchema,
   type EntityIdSchema,
+  type EntityIdSchemaToolkit,
   entityIdSchema,
   entityIdWithPrefixSchema,
   prefixGatedEntityIdSchema,
+  type PrefixSource,
   strictEntityIdSchema,
   toEntityId,
+  withSchemas,
 } from './schema.js';
 
 export {

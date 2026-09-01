@@ -24,7 +24,7 @@ import {
 } from './mode.js';
 import { EntityIdError } from './prefix.js';
 import { defineEntityPrefixes } from './registry.js';
-import { entityIdSchema } from './schema.js';
+import { entityIdSchema, withSchemas } from './schema.js';
 
 // The mode is process-wide, so every test restores it. A leaked mode would
 // silently change the meaning of every later assertion in the run.
@@ -328,7 +328,7 @@ describe('initialization order does not matter', () => {
   // setValidationMode still governs objects created earlier. Without this
   // guarantee, users would have to police their import order.
   const earlyRegistry = defineEntityPrefixes({ user: 'usr' } as const);
-  const earlySchema = earlyRegistry.ids.user.schema;
+  const earlySchema = withSchemas(earlyRegistry).user.schema;
   const HALF_VALID = 'usr_not-canonical';
 
   it('a schema built before setValidationMode obeys it afterwards', () => {

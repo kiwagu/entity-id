@@ -36,9 +36,21 @@ First public release.
   `import { createEntityId }` cost ~88 KB gzip in a consumer bundle. It now
   costs ~2.5 KB. `scripts/verify-bundle.mjs` (`npm run verify:bundle`) measures
   this against the packed tarball and fails if the cost returns.
-- The registry's `.schema`, `.prefixSchema` and `.jsonSchema` members are built
-  lazily on first access and cached, so `defineEntityPrefixes` no longer builds
-  two Zod schemas per kind up front: 0.49 ms against 2.13 ms for 24 kinds.
+- The per-kind toolkit no longer carries `.schema`, `.prefixSchema` or
+  `.jsonSchema`. They move to `withSchemas(registry)` in `entity-id/schema`,
+  which returns the same three members keyed by kind. This is what makes the
+  registry Zod-free in a consumer bundle — 3.1 KB gzip against 89.1 KB — and a
+  lazy getter could not have achieved it, because a static import pulls Zod
+  into the module graph however the value is reached.
+
+  ```ts
+  // before
+  registry.ids.user.schema.parse(value);
+  // after
+  import { withSchemas } from 'entity-id/schema';
+  const schemas = withSchemas(registry);
+  schemas.user.schema.parse(value);
+  ```
 - Optional chronological ordering in PostgreSQL without adding a column: the
   migration installs the immutable `public.entity_id_ts_of`, and
   `entityIdTimeIndexSql` / `entityIdTimeOrderSql` in `entity-id/sql` render the

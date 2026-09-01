@@ -68,6 +68,7 @@ import {
   compareEntityIds, createEntityId, defineEntityPrefixes, entityIdSchema,
   entityIdToIso, isEntityId, parseEntityId,
 } from 'entity-id';
+import { withSchemas } from 'entity-id/schema';
 
 const results = {};
 const id = createEntityId('usr');
@@ -85,7 +86,7 @@ const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
 const userId = registry.ids.user.create();
 results.kindOf = registry.kindOf(userId);
 results.crossKind = registry.ids.order.is(userId);
-results.jsonSchema = String(registry.ids.user.jsonSchema().pattern).includes('usr_');
+results.jsonSchema = String(withSchemas(registry).user.jsonSchema().pattern).includes('usr_');
 
 const a = createEntityId('usr', { timeMs: 1000, monotonic: false });
 const b = createEntityId('usr', { timeMs: 2000, monotonic: false });

@@ -303,3 +303,95 @@ export function toEntityId(value: unknown): EntityId | undefined {
   const result = entityIdSchema.safeParse(value);
   return result.success ? result.data : undefined;
 }
+
+/**
+ * The Zod members for one registered entity kind, as returned by
+ * {@link withSchemas}.
+ *
+ * @typeParam K - The entity kind's name, used as the brand.
+ *
+ * @public
+ */
+export type EntityIdSchemaToolkit<K extends string = string> = Readonly<{
+  /**
+   * Strict schema: validates the full `<prefix>_<rand16>.<ts10>` contract and
+   * brands the parsed output as this kind's id.
+   */
+  schema: EntityIdSchema<K>;
+  /**
+   * Lenient, prefix-gated schema: checks the `<prefix>_` head only, then
+   * brands. Tolerates non-canonical placeholder suffixes in fixtures.
+   */
+  prefixSchema: EntityIdSchema<K>;
+  /**
+   * JSON Schema for this kind's id.
+   *
+   * @param io - `'input'` for request payloads, `'output'` for responses.
+   * Default: `'output'`.
+   */
+  jsonSchema: (io?: 'input' | 'output') => EntityIdJsonSchema;
+}>;
+
+/**
+ * The minimal shape {@link withSchemas} needs from a registry. Declared
+ * structurally so `schema.ts` does not import `registry.ts` — the two modules
+ * stay independent, and a consumer of one never pulls in the other.
+ *
+ * @public
+ */
+export type PrefixSource = Readonly<{
+  ids: Readonly<Record<string, Readonly<{ prefix: string }>>>;
+}>;
+
+/**
+ * Derive Zod schemas for every kind in a registry.
+ *
+ * The registry itself is Zod-free by design: an application that only mints and
+ * checks ids should not bundle a validator library it never calls. Importing
+ * this function is the opt-in — the cost arrives with the import, in the module
+ * that actually wants schemas.
+ *
+ * @param registry - A registry from `defineEntityPrefixes`, or any object with
+ * a compatible `ids` map.
+ * @returns One {@link EntityIdSchemaToolkit} per kind, keyed by kind name.
+ *
+ * @example
+ * ```ts
+ * import { defineEntityPrefixes } from 'entity-id';
+ * import { withSchemas } from 'entity-id/schema';
+ *
+ * const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
+ * const schemas = withSchemas(registry);
+ *
+ * schemas.user.schema.parse(someValue);   // branded UserId
+ * schemas.user.jsonSchema();              // { type: 'string', pattern: … }
+ * ```
+ *
+ * @public
+ */
+export function withSchemas<TRegistry extends PrefixSource>(
+  registry: TRegistry
+): {
+  readonly [K in keyof TRegistry['ids'] & string]: EntityIdSchemaToolkit<K>;
+} {
+  const entries = Object.entries(registry.ids).map(([kind, toolkit]) => {
+    const { prefix } = toolkit;
+    // Built once per kind and closed over, so repeated access is free and the
+    // schema identity stays stable — `z.infer` narrowing and any Map keyed by
+    // a schema depend on that.
+    const schema = brandedEntityIdSchema(prefix);
+    return [
+      kind,
+      Object.freeze({
+        schema,
+        prefixSchema: prefixGatedEntityIdSchema(prefix),
+        jsonSchema: (io: 'input' | 'output' = 'output') =>
+          entityIdJsonSchema(schema as never, io),
+      }),
+    ] as const;
+  });
+
+  return Object.freeze(Object.fromEntries(entries)) as {
+    readonly [K in keyof TRegistry['ids'] & string]: EntityIdSchemaToolkit<K>;
+  };
+}

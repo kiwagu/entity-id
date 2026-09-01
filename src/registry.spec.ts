@@ -4,12 +4,15 @@ import { createEntityId, type EntityId } from './entity-id.js';
 import { withValidationMode } from './mode.js';
 import { EntityIdError } from './prefix.js';
 import { defineEntityPrefixes, type EntityIdOf } from './registry.js';
+import { withSchemas } from './schema.js';
 
 const registry = defineEntityPrefixes({
   user: 'usr',
   order: 'ord',
   orderLine: 'orl',
 } as const);
+
+const schemas = withSchemas(registry);
 
 type UserId = EntityIdOf<typeof registry.prefixes, 'user'>;
 type OrderId = EntityIdOf<typeof registry.prefixes, 'order'>;
@@ -140,22 +143,24 @@ describe('per-kind toolkit', () => {
 
   it('parses through its strict schema', () => {
     const id = user.create();
-    expect(user.schema.parse(id)).toBe(id);
-    expect(user.schema.safeParse(order.create()).success).toBe(false);
+    expect(schemas.user.schema.parse(id)).toBe(id);
+    expect(schemas.user.schema.safeParse(order.create()).success).toBe(false);
   });
 
   it('tolerates placeholders through its prefix schema', () => {
-    expect(user.prefixSchema.parse('usr_fixture')).toBe('usr_fixture');
-    expect(user.prefixSchema.safeParse('ord_fixture').success).toBe(false);
+    expect(schemas.user.prefixSchema.parse('usr_fixture')).toBe('usr_fixture');
+    expect(schemas.user.prefixSchema.safeParse('ord_fixture').success).toBe(
+      false
+    );
   });
 
   it('emits a JSON Schema carrying its prefix', () => {
-    const output = user.jsonSchema();
+    const output = schemas.user.jsonSchema();
     expect(output.type).toBe('string');
     expect(String(output.pattern)).toContain('usr_');
     expect(new RegExp(String(output.pattern)).test(user.create())).toBe(true);
 
-    const input = user.jsonSchema('input');
+    const input = schemas.user.jsonSchema('input');
     expect(String(input.pattern)).toContain('A-HJKMNP-TV-Z');
   });
 
@@ -185,49 +190,51 @@ describe('per-kind toolkit', () => {
   });
 });
 
-describe('lazy schema members', () => {
-  // The Zod-backed members are getters so `defineEntityPrefixes` does not build
-  // two schemas per kind up front. Caching must be per member and per kind, and
-  // identity must be stable — a schema rebuilt on every access would break
-  // `z.infer` narrowing and any Map keyed by it.
-  it('returns a stable instance across accesses', () => {
+describe('the registry stays free of schemas', () => {
+  // The toolkit is deliberately Zod-free: `registry.ts` must not import
+  // `schema.ts` at all, so an application that only mints and checks ids does
+  // not bundle a validator library it never calls. Schemas come from
+  // `withSchemas` in `entity-id/schema`, and `scripts/verify-bundle.mjs`
+  // measures that the separation holds in the packed artifact.
+  it('exposes only id operations on a toolkit', () => {
     const registry = defineEntityPrefixes({ user: 'usr' });
-    const first = registry.ids.user.schema;
-    expect(registry.ids.user.schema).toBe(first);
+    expect(Object.keys(registry.ids.user).sort()).toEqual([
+      'assert',
+      'brand',
+      'create',
+      'is',
+      'kind',
+      'prefix',
+    ]);
   });
 
-  it('caches prefixSchema separately from schema', () => {
-    const registry = defineEntityPrefixes({ user: 'usr' });
-    const schema = registry.ids.user.schema;
-    const prefixSchema = registry.ids.user.prefixSchema;
-    expect(prefixSchema).not.toBe(schema);
-    expect(registry.ids.user.prefixSchema).toBe(prefixSchema);
-    expect(registry.ids.user.schema).toBe(schema);
-  });
-
-  it('keeps each kind independent', () => {
+  it('derives schemas through withSchemas instead', () => {
     const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
-    expect(registry.ids.user.schema).not.toBe(registry.ids.order.schema);
-  });
+    const schemas = withSchemas(registry);
 
-  it('still parses and rejects correctly through the getter', () => {
-    const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
     const id = registry.ids.user.create();
-    expect(registry.ids.user.schema.parse(id)).toBe(id);
-    expect(() => registry.ids.order.schema.parse(id)).toThrow();
+    expect(schemas.user.schema.parse(id)).toBe(id);
+    expect(() => schemas.order.schema.parse(id)).toThrow();
   });
 
-  it('emits a JSON Schema built from the same cached instance', () => {
-    const registry = defineEntityPrefixes({ user: 'usr' });
-    const jsonSchema = registry.ids.user.jsonSchema();
-    expect(jsonSchema.pattern).toContain('usr_');
-    expect(registry.ids.user.jsonSchema()).toEqual(jsonSchema);
+  it('keeps schema identity stable per kind', () => {
+    // A schema rebuilt on every access would break `z.infer` narrowing and any
+    // Map keyed by it.
+    const schemas = withSchemas(defineEntityPrefixes({ user: 'usr' }));
+    expect(schemas.user.schema).toBe(schemas.user.schema);
+    expect(schemas.user.prefixSchema).not.toBe(schemas.user.schema);
   });
 
-  it('leaves the toolkit frozen', () => {
-    // Getters must not have made the object extensible again.
-    const registry = defineEntityPrefixes({ user: 'usr' });
-    expect(Object.isFrozen(registry.ids.user)).toBe(true);
+  it('emits a JSON Schema carrying the kind prefix', () => {
+    const schemas = withSchemas(defineEntityPrefixes({ user: 'usr' }));
+    expect(schemas.user.jsonSchema().pattern).toContain('usr_');
+  });
+
+  it('accepts any object shaped like a registry', () => {
+    // `withSchemas` is typed structurally so `schema.ts` need not import
+    // `registry.ts`; this pins that the contract really is structural.
+    const schemas = withSchemas({ ids: { thing: { prefix: 'thg' } } });
+    expect(schemas.thing.jsonSchema().pattern).toContain('thg_');
   });
 });
 

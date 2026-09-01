@@ -20,7 +20,7 @@ import {
 } from '../src/entity-id.js';
 import { withValidationMode } from '../src/mode.js';
 import { defineEntityPrefixes } from '../src/registry.js';
-import { entityIdSchema } from '../src/schema.js';
+import { entityIdSchema, withSchemas } from '../src/schema.js';
 
 type Result = Readonly<{
   group: string;
@@ -88,6 +88,7 @@ function report(): void {
 
 const ulidMonotonic = monotonicFactory();
 const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' } as const);
+const registrySchemas = withSchemas(registry);
 const ID = createEntityId('usr');
 const WRONG = createEntityId('ord');
 const GARBAGE = 'not-an-id';
@@ -161,8 +162,8 @@ bench(
 );
 bench(
   'Zod schema',
-  'toolkit .schema.parse (mixed)',
-  () => registry.ids.user.schema.parse(ID),
+  'withSchemas().schema.parse (mixed)',
+  () => registrySchemas.user.schema.parse(ID),
   200_000
 );
 

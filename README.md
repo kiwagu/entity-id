@@ -141,9 +141,22 @@ defineEntityPrefixes({ program: 'prg', progress: 'prg' });
 | `is(value)` | Type guard narrowing to this kind |
 | `assert(value)` | Throwing parse at a boundary |
 | `brand(value)` | Unchecked cast, for trusted construction |
-| `schema` | Strict Zod schema (full format) |
-| `prefixSchema` | Lenient schema (prefix only) |
-| `jsonSchema(io?)` | JSON Schema for a contract |
+
+The toolkit carries no Zod. Schemas are opt-in through `withSchemas`, so an
+application that only mints and checks ids never bundles a validator library it
+does not call — see [Module format and bundle cost](#module-format-and-bundle-cost).
+
+```ts
+import { withSchemas } from 'entity-id/schema';
+
+const schemas = withSchemas(registry);
+```
+
+| Member | Purpose |
+| --- | --- |
+| `schemas.user.schema` | Strict Zod schema (full format) |
+| `schemas.user.prefixSchema` | Lenient schema (prefix only) |
+| `schemas.user.jsonSchema(io?)` | JSON Schema for a contract |
 
 ## Branded types
 
@@ -192,7 +205,7 @@ contract embedding an id would fail to serialize. Here both sides render.
 ```ts
 import { entityIdJsonSchema } from 'entity-id';
 
-entityIdJsonSchema(registry.ids.user.schema);
+entityIdJsonSchema(withSchemas(registry).user.schema);
 // { type: 'string', pattern: '^usr_[0-9a-hjkmnp-tv-z]{16}\\.[0-9a-hjkmnp-tv-z]{10}$' }
 
 entityIdJsonSchema(entityIdSchema, 'input');  // permissive: accepts mixed case
@@ -429,15 +442,19 @@ travel with the main entry:
 | What you import | Bundled (gzip) | Zod included |
 | --- | --- | --- |
 | `createEntityId`, `isEntityId`, `parseEntityId` | ~2.5 KB | no |
-| `entity-id/schema`, or the registry's `.schema` | ~88 KB | yes |
+| `defineEntityPrefixes` and the per-kind toolkit | ~3.1 KB | no |
+| `entity-id/schema` — `entityIdSchema`, `withSchemas` | ~88 KB | yes |
 
 `npm run verify:bundle` measures this against the packed tarball and fails if
 the main entry ever regains a top-level Zod import.
 
-The registry's `.schema`, `.prefixSchema` and `.jsonSchema` members are lazy —
-built on first access, then cached — so `defineEntityPrefixes` stays cheap for
-an application that only mints and checks ids. Measured on 24 kinds: 0.49 ms to
-build the registry, against 2.13 ms when the schemas were built eagerly.
+The registry carries no Zod at all: `defineEntityPrefixes` gives you `create`,
+`is`, `assert` and `brand`, and schemas come from `withSchemas` in
+`entity-id/schema`. Keeping them in separate modules is what makes the
+separation real — a lazy getter on the toolkit would not have worked, because a
+static import pulls Zod into the module graph however the value is reached.
+Measured: the registry costs 3.1 KB gzip, against 89.1 KB when it built schemas
+itself.
 
 ## Security
 

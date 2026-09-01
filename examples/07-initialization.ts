@@ -17,6 +17,7 @@ import {
   type ValidationMode,
 } from 'entity-id';
 import { bindValidationMode } from 'entity-id/async';
+import { withSchemas } from 'entity-id/schema';
 
 const HALF_VALID = 'usr_not-canonical';
 
@@ -49,7 +50,7 @@ function bootstrap(): void {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' } as const);
-const userIdSchema = registry.ids.user.schema; // created now, at import time
+const userIdSchema = withSchemas(registry).user.schema; // created at import
 
 console.log('[before bootstrap] mode is', getValidationMode(), '(the default)');
 console.log(

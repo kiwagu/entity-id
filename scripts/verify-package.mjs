@@ -53,8 +53,8 @@ try {
     const isEsm = type === 'module';
     const ext = isEsm ? 'mjs' : 'cjs';
     const load = isEsm
-      ? `const m = await import('entity-id'); const a = await import('entity-id/async'); const s = await import('entity-id/sql');`
-      : `const m = require('entity-id'); const a = require('entity-id/async'); const s = require('entity-id/sql');`;
+      ? `const m = await import('entity-id'); const a = await import('entity-id/async'); const s = await import('entity-id/sql'); const sc = await import('entity-id/schema'); const rg = await import('entity-id/registry');`
+      : `const m = require('entity-id'); const a = require('entity-id/async'); const s = require('entity-id/sql'); const sc = require('entity-id/schema'); const rg = require('entity-id/registry');`;
 
     // CommonJS has no top-level await, so the body runs inside an async IIFE
     // in both formats.
@@ -70,6 +70,15 @@ out.defaultMode = m.getValidationMode();
 out.mixedAcceptsHead = m.isEntityId(HALF);
 out.fullRejectsHead = m.isEntityId(HALF, { mode: 'full' });
 out.sql = s.ENTITY_ID_SQL.includes('entity_id_generate');
+
+// The registry must work without the schema module, and withSchemas must
+// bolt the Zod layer back on from the separate entry point.
+const reg = rg.defineEntityPrefixes({ user: 'usr', order: 'ord' });
+out.registryMints = reg.ids.user.is(reg.ids.user.create());
+out.toolkitHasNoSchema = reg.ids.user.schema === undefined;
+const derived = sc.withSchemas(reg);
+out.withSchemas = derived.user.schema.parse(reg.ids.user.create()).startsWith('usr_');
+out.withSchemasJson = String(derived.user.jsonSchema().pattern).includes('usr_');
 out.tsIndex = s.entityIdTimeIndexSql('events');
 out.tsFn = s.ENTITY_ID_SQL.includes('entity_id_ts_of');
 try { s.entityIdTimeIndexSql('events; drop table t'); out.tsGuard = 'none'; }
@@ -107,6 +116,10 @@ process.stdout.write(JSON.stringify(out));
     check('mixed accepts a prefixed body', r.mixedAcceptsHead, true);
     check('full rejects it', r.fullRejectsHead, false);
     check('sql entry point loads', r.sql, true);
+    check('registry entry point works', r.registryMints, true);
+    check('toolkit carries no schema', r.toolkitHasNoSchema, true);
+    check('withSchemas parses', r.withSchemas, true);
+    check('withSchemas emits JSON Schema', r.withSchemasJson, true);
     check('migration installs entity_id_ts_of', r.tsFn, true);
     check(
       'time index statement renders',

@@ -13,15 +13,20 @@ import {
   strictEntityIdSchema,
   withValidationMode,
 } from 'entity-id';
+import { withSchemas } from 'entity-id/schema';
 
 const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' } as const);
+
+// Schemas are opt-in: the registry itself carries no Zod, so an application
+// that only mints and checks ids never bundles a validator it does not call.
+const schemas = withSchemas(registry);
 const userId = createEntityId('usr');
 const orderId = createEntityId('ord');
 
 // A contract composed from per-kind schemas. Parsing is the only way to obtain
 // a branded id, so an unvalidated string cannot reach the domain by accident.
 const CreateOrder = z.object({
-  userId: registry.ids.user.schema,
+  userId: schemas.user.schema,
   total: z.number().positive(),
 });
 
@@ -42,13 +47,10 @@ if (!swapped.success) {
 // representable in JSON Schema. Embed one in an OpenAPI document or a tool
 // contract directly.
 console.log('\n[JSON Schema]');
-console.log(
-  '  output side     ',
-  JSON.stringify(registry.ids.user.jsonSchema())
-);
+console.log('  output side     ', JSON.stringify(schemas.user.jsonSchema()));
 console.log(
   '  input side      ',
-  JSON.stringify(registry.ids.user.jsonSchema('input'))
+  JSON.stringify(schemas.user.jsonSchema('input'))
 );
 
 // A whole contract serializes, ids and all.
@@ -58,9 +60,7 @@ console.log('  full contract   ', JSON.stringify(serialized).slice(0, 96), '…'
 // The published contract always describes the complete format, even when the
 // process runs in a cheaper mode: a mode is a local performance decision.
 withValidationMode('fast', () => {
-  const stillComplete = String(
-    entityIdJsonSchema(registry.ids.user.schema).pattern
-  );
+  const stillComplete = String(entityIdJsonSchema(schemas.user.schema).pattern);
   console.log('  in fast mode    ', stillComplete);
 });
 
