@@ -46,6 +46,12 @@
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
     },
+    "./async": {
+      "types": "./dist/async.d.ts",
+      "import": "./dist/async.js",
+      "require": "./dist/async.cjs",
+      "default": "./dist/async.js"
+    },
     "./sql": {
       "types": "./dist/sql.d.ts",
       "import": "./dist/sql.js",
@@ -81,7 +87,9 @@
     "format:check": "prettier --check .",
     "check": "npm run sql:codegen && npm run format:check && npm run lint && npm run typecheck && npm run test",
     "prepublishOnly": "npm run clean && npm run check && npm run build",
-    "bench": "tsx bench/throughput.bench.ts"
+    "bench": "tsx bench/throughput.bench.ts",
+    "examples": "node scripts/run-examples.mjs",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
     "ulid": "^3.0.2",
@@ -100,5 +108,13 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
     "vitest": "^4.1.11"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.4.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }

@@ -72,6 +72,7 @@ export {
   type ModeProfile,
   resetValidationMode,
   resolveModeProfile,
+  setAmbientModeResolver,
   setValidationMode,
   type ValidationDepth,
   type ValidationMode,

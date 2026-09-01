@@ -38,6 +38,9 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
+      // Some tests pass an async function that deliberately never awaits, to
+      // assert how the library reacts to a returned promise.
+      '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { varsIgnorePattern: '^_|Schema$' },

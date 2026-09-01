@@ -100,18 +100,44 @@ let activeMode: ValidationMode = DEFAULT_VALIDATION_MODE;
  * @public
  */
 export function getModeProfile(mode?: ValidationMode): ModeProfile {
-  return PROFILES[mode ?? activeMode];
+  return PROFILES[mode ?? getValidationMode()];
 }
 
 /**
- * The mode currently in force for this process.
+ * A hook through which an async-aware scope provider can supply the ambient
+ * mode. Installed by `entity-id/async`; unset in a plain isomorphic build, so
+ * the core never reaches for `node:async_hooks`.
+ */
+let ambientModeResolver: (() => ValidationMode | undefined) | undefined;
+
+/**
+ * Register a resolver consulted before the process-wide mode.
+ *
+ * Used by `entity-id/async` to back {@link withValidationMode} with
+ * `AsyncLocalStorage`. Applications do not normally call this.
+ *
+ * @param resolver - Returns the mode for the current async scope, or
+ * `undefined` to fall through to the process-wide setting. Pass `undefined` to
+ * uninstall.
+ *
+ * @public
+ */
+export function setAmbientModeResolver(
+  resolver: (() => ValidationMode | undefined) | undefined
+): void {
+  ambientModeResolver = resolver;
+}
+
+/**
+ * The mode currently in force: the innermost async scope if one is active,
+ * otherwise the process-wide setting.
  *
  * @returns The active mode.
  *
  * @public
  */
 export function getValidationMode(): ValidationMode {
-  return activeMode;
+  return ambientModeResolver?.() ?? activeMode;
 }
 
 /**
@@ -160,13 +186,18 @@ export function resetValidationMode(): ValidationMode {
  * Run a function with a mode temporarily in force, restoring the previous mode
  * afterwards — including when the function throws.
  *
- * The override is synchronous and process-wide: it is not tied to an async
- * context, so do not rely on it across an `await` that yields to other work.
- * For a single operation, prefer the per-call `mode` option.
+ * **This helper is synchronous.** Passing an `async` function is a mistake and
+ * throws: the callback would return a promise immediately, so the mode would be
+ * restored at the first `await` rather than at the end, and two concurrent
+ * scopes would overwrite each other. For asynchronous work use either the
+ * per-call `{ mode }` option — which is not ambient state and is always safe —
+ * or `withValidationModeAsync` from `entity-id/async`, which is backed by
+ * `AsyncLocalStorage`.
  *
  * @param mode - The mode to apply for the duration of the call.
- * @param fn - The function to run.
+ * @param fn - A **synchronous** function.
  * @returns Whatever `fn` returns.
+ * @throws {TypeError} When `fn` returns a promise.
  *
  * @example
  * ```ts
@@ -177,11 +208,29 @@ export function resetValidationMode(): ValidationMode {
  */
 export function withValidationMode<T>(mode: ValidationMode, fn: () => T): T {
   const previous = setValidationMode(mode);
+  let result: T;
   try {
-    return fn();
-  } finally {
+    result = fn();
+  } catch (error) {
     activeMode = previous;
+    throw error;
   }
+
+  if (
+    result !== null &&
+    typeof result === 'object' &&
+    typeof (result as { then?: unknown }).then === 'function'
+  ) {
+    activeMode = previous;
+    throw new TypeError(
+      'withValidationMode() is synchronous and was given an async function. ' +
+        'The mode would be restored at the first await, not at the end. Use the ' +
+        'per-call { mode } option, or withValidationModeAsync from "entity-id/async".'
+    );
+  }
+
+  activeMode = previous;
+  return result;
 }
 
 /**
@@ -208,5 +257,7 @@ export type ValidationOptions = Readonly<{
  */
 export function resolveModeProfile(options?: ValidationOptions): ModeProfile {
   const override = options?.mode;
-  return PROFILES[override ?? activeMode];
+  if (override !== undefined) return PROFILES[override];
+  // Consult the async scope first, then the process-wide setting.
+  return PROFILES[ambientModeResolver?.() ?? activeMode];
 }

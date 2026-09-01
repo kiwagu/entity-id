@@ -17,6 +17,15 @@ First public release.
   profile (`ModeProfile`), so later capabilities can be added without renaming
   the modes. `strictEntityIdSchema` stays strict regardless of the active mode,
   and the emitted JSON Schema always advertises the full canonical pattern.
+- `entity-id/async`: `withValidationModeAsync`, `bindValidationMode` and
+  `hasAsyncModeScope`, backing mode scopes with `AsyncLocalStorage` so a mode
+  survives an `await` and concurrent scopes stay isolated. It is a separate
+  entry point so the main one remains isomorphic.
+- `withValidationMode` now throws a `TypeError` when handed an `async`
+  function, instead of silently restoring the mode at the first `await`.
+- Seven runnable examples in `examples/`, executed by `npm run examples`,
+  covering the three modes synchronously and asynchronously, and where to
+  initialize the mode in an application.
 - `hasWellFormedPrefix`, the `'mixed'`-mode head check, exported for reuse.
 - `bench/throughput.bench.ts` (`npm run bench`): ids per second for generation,
   validation and decoding in every mode, against `ulid` and `crypto.randomUUID`
@@ -46,9 +55,21 @@ First public release.
 - `entity-id` CLI: `new`, `inspect`, `check`, `derive` and `sql`.
 - `EntityIdError`, carrying the offending value on every failure.
 - Dual ESM/CommonJS builds with type declarations for both.
+- An optional `typescript >=5.4.0` peer dependency. The floor is set by `zod`,
+  whose declarations use `NoInfer` (TS 5.4+); the branded types here need 5.0+
+  for `const` type parameters. Verified against 5.4, 5.5, 5.6, 5.9 and 7.0 with
+  `skipLibCheck` off.
+- `scripts/verify-package.mjs` (`npm run verify:package`): installs the packed
+  tarball into throwaway ESM and CommonJS projects and exercises the public API
+  there, so bundling faults cannot reach a release.
 
 ### Fixed
 
+- Async mode scopes now work in the **built** package. Multi-entry bundling
+  inlined a private copy of the mode module into each entry, so
+  `entity-id/async` installed its resolver into one copy while the validators
+  read another, and a scope silently did nothing. Code splitting now keeps that
+  state in one shared chunk; a smoke test against the packed tarball guards it.
 - `createEntityId(prefix, { timeMs: 0 })` now preserves the Unix epoch. The
   underlying `ulid` library treats a `0` seed as falsy and substitutes the
   current time, which silently lost an epoch timestamp.

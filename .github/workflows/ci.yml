@@ -36,29 +36,53 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Pack and install into a clean ESM project
+      - name: Verify the packed artifact in ESM and CommonJS projects
+        # Unit tests import from src/, so only this step can catch bundling
+        # faults: a wrong exports map, a missing file, or module state
+        # duplicated across entry points.
+        run: node scripts/verify-package.mjs
+      - name: Run the examples
+        run: npm run examples
+
+  typescript-matrix:
+    # The declarations must keep working across the TypeScript versions
+    # consumers actually run — including the next major, so an upgrade never
+    # arrives as a surprise. skipLibCheck is off on purpose: the floor is set
+    # by a dependency's declarations, not only by our own.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        typescript: ['5.4', '5.5', '5.9', '7.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Type-check a consumer against TypeScript ${{ matrix.typescript }}
         run: |
-          npm pack
-          mkdir -p /tmp/esm && cd /tmp/esm
+          npm pack --pack-destination /tmp
+          mkdir -p /tmp/consumer && cd /tmp/consumer
           npm init -y >/dev/null && npm pkg set type=module
-          npm i "$GITHUB_WORKSPACE"/entity-id-*.tgz
-          node --input-type=module -e "
-            import { createEntityId, isEntityId } from 'entity-id';
-            const id = createEntityId('usr');
-            if (!isEntityId(id)) { throw new Error('ESM import failed'); }
-            console.log('ESM ok:', id);
-          "
-      - name: Install into a clean CommonJS project
-        run: |
-          mkdir -p /tmp/cjs && cd /tmp/cjs
-          npm init -y >/dev/null
-          npm i "$GITHUB_WORKSPACE"/entity-id-*.tgz
-          node -e "
-            const { createEntityId, isEntityId } = require('entity-id');
-            const id = createEntityId('usr');
-            if (!isEntityId(id)) { throw new Error('CJS require failed'); }
-            console.log('CJS ok:', id);
-          "
+          npm i /tmp/entity-id-*.tgz typescript@${{ matrix.typescript }} --no-audit --no-fund
+          cp "$GITHUB_WORKSPACE/examples/02-registry.ts" ./probe.ts
+          cat > tsconfig.json <<'JSON'
+          {
+            "compilerOptions": {
+              "strict": true,
+              "target": "ES2022",
+              "module": "ESNext",
+              "moduleResolution": "bundler",
+              "skipLibCheck": false,
+              "noEmit": true
+            },
+            "include": ["probe.ts"]
+          }
+          JSON
+          npx tsc --noEmit -p tsconfig.json
 
   postgres:
     runs-on: ubuntu-latest

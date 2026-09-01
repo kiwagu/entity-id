@@ -21,7 +21,20 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+
+    "paths": {
+      "entity-id": ["./src/index.ts"],
+      "entity-id/async": ["./src/async.ts"],
+      "entity-id/sql": ["./src/sql.ts"]
+    }
   },
-  "include": ["src", "scripts", "*.config.ts", "*.config.mts"]
+  "include": [
+    "src",
+    "scripts",
+    "bench",
+    "examples",
+    "*.config.ts",
+    "*.config.mts"
+  ]
 }

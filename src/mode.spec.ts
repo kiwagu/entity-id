@@ -23,6 +23,7 @@ import {
 } from './mode.js';
 import { EntityIdError } from './prefix.js';
 import { defineEntityPrefixes } from './registry.js';
+import { entityIdSchema } from './schema.js';
 
 // The mode is process-wide, so every test restores it. A leaked mode would
 // silently change the meaning of every later assertion in the run.
@@ -277,6 +278,35 @@ describe('mode-independent behaviour', () => {
       expect(registry.kindOf(registry.ids.user.create())).toBe('user');
       expect(registry.kindOf('zzz_whatever')).toBeUndefined();
     });
+  });
+});
+
+describe('initialization order does not matter', () => {
+  // Schemas and registries are often built at module load, before an
+  // application's bootstrap runs. The mode is read at CALL time, so a later
+  // setValidationMode still governs objects created earlier. Without this
+  // guarantee, users would have to police their import order.
+  const earlyRegistry = defineEntityPrefixes({ user: 'usr' } as const);
+  const earlySchema = earlyRegistry.ids.user.schema;
+  const HALF_VALID = 'usr_not-canonical';
+
+  it('a schema built before setValidationMode obeys it afterwards', () => {
+    expect(earlySchema.safeParse(HALF_VALID).success).toBe(true); // mixed
+    setValidationMode('full');
+    expect(earlySchema.safeParse(HALF_VALID).success).toBe(false);
+  });
+
+  it('a registry guard built earlier obeys it too', () => {
+    expect(earlyRegistry.ids.user.is(HALF_VALID)).toBe(true); // mixed
+    setValidationMode('full');
+    expect(earlyRegistry.ids.user.is(HALF_VALID)).toBe(false);
+  });
+
+  it('the module-level entityIdSchema follows the mode as well', () => {
+    setValidationMode('full');
+    expect(entityIdSchema.safeParse(HALF_VALID).success).toBe(false);
+    setValidationMode('fast');
+    expect(entityIdSchema.safeParse(HALF_VALID).success).toBe(true);
   });
 });
 

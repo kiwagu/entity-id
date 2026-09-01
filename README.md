@@ -27,6 +27,19 @@ npm install entity-id
 
 `ulid` and `zod` are regular dependencies — nothing else to install.
 
+**TypeScript 5.4 or newer.** Verified by type-checking a consumer against 5.4,
+5.5, 5.6, 5.9 and 7.0 with `skipLibCheck` off. The floor comes from `zod`,
+whose declarations use `NoInfer` (added in TS 5.4); this package's own branded
+types need 5.0+ for `const` type parameters. JavaScript consumers need no
+TypeScript at all.
+
+The declarations already type-check cleanly under **TypeScript 7.0**, so an
+upgrade needs no change here.
+
+**Runtimes:** Node 18+, Bun, Deno, edge workers and the browser. The main entry
+point is isomorphic; only `entity-id/async` requires a Node-style runtime, as it
+uses `AsyncLocalStorage`.
+
 ## Quick start
 
 ```ts
@@ -45,6 +58,26 @@ parseEntityId(id);
 //   ulid:   '01JD8X2P4QA1B2C3D4E5F6G7H8',
 //   timeMs: 1731412345678,
 // }
+```
+
+## Examples
+
+Seven runnable examples live in [`examples/`](./examples), each a complete file
+you can execute:
+
+| File | Shows |
+| --- | --- |
+| [`01-basics.ts`](./examples/01-basics.ts) | minting, decoding, chronological sorting, migrating from ULIDs |
+| [`02-registry.ts`](./examples/02-registry.ts) | a typed registry, per-kind guards, compile-time separation |
+| [`03-sync-validation.ts`](./examples/03-sync-validation.ts) | the three modes side by side, synchronously |
+| [`04-async-validation.ts`](./examples/04-async-validation.ts) | async scopes, concurrency, an HTTP-style boundary |
+| [`05-schemas.ts`](./examples/05-schemas.ts) | Zod contracts and JSON Schema output |
+| [`06-postgres.ts`](./examples/06-postgres.ts) | table definitions and the migration |
+| [`07-initialization.ts`](./examples/07-initialization.ts) | where to set the mode, layering edges, anti-patterns |
+
+```bash
+npm run examples          # run them all
+npm run examples -- 04    # run one
 ```
 
 ## Why prefixed ids
@@ -190,6 +223,80 @@ A mode is a *profile*, not merely a strictness level: it also selects the
 decoding path (`fast` and `mixed` split the string; `full` matches the regular
 expression). Future capabilities will be added as further fields of that
 profile, so the three names stay stable.
+
+### Where to set the mode
+
+Set it **once, in your application's entry point**, before you serve traffic:
+
+```ts
+// server.ts
+import { setValidationMode } from 'entity-id';
+
+setValidationMode(process.env.NODE_ENV === 'production' ? 'mixed' : 'full');
+```
+
+**Import order does not matter.** The mode is read when a value is validated,
+not when a schema is built, so schemas and registries created at module load —
+before your bootstrap runs — still obey the mode you set later. You never have
+to police your imports.
+
+A library should **not** call `setValidationMode`: the setting is process-wide,
+so a library changing it would silently alter the behaviour of the application
+that depends on it. Libraries should use a per-call `{ mode }` instead.
+
+In tests, reset it so a leaked mode cannot change the meaning of later
+assertions:
+
+```ts
+afterEach(() => resetValidationMode());
+```
+
+A typical layering is a cheap interior with strict edges:
+
+| Where | Mode | How |
+| --- | --- | --- |
+| Application default | `mixed` | `setValidationMode('mixed')` at startup |
+| Public endpoint | `full` | `bindValidationMode('full', handler)` |
+| Trusted internal worker | `fast` | `bindValidationMode('fast', worker)` |
+| One-off strict check | `full` | `isEntityId(v, { mode: 'full' })` |
+
+See [`examples/07-initialization.ts`](./examples/07-initialization.ts) for a
+runnable version of all of this.
+
+### Asynchronous code
+
+`withValidationMode` is **synchronous**. Handing it an `async` function is a
+mistake — the callback returns a promise immediately, so the mode would be
+restored at the first `await` rather than at the end, and two concurrent
+requests would overwrite each other's setting. Rather than fail silently, it
+throws.
+
+For asynchronous work, `entity-id/async` provides a scope backed by
+`AsyncLocalStorage`:
+
+```ts
+import { withValidationModeAsync, bindValidationMode } from 'entity-id/async';
+
+await withValidationModeAsync('full', async () => {
+  const body = await request.json();
+  return userIdSchema.parse(body.userId); // strict, across every await
+});
+
+// Or pin a handler once:
+const handler = bindValidationMode('full', async (req) => { /* ... */ });
+```
+
+Concurrent scopes are isolated: two requests served at the same time under
+different modes do not interfere. The module is a separate entry point because
+it imports `node:async_hooks`; the main entry point stays isomorphic and works
+in the browser.
+
+The **per-call `{ mode }` option is safest of all** and needs no scope: it
+travels with the call, so no amount of interleaving can race it.
+
+```ts
+isEntityId(value, { mode: 'full' }); // immune to concurrency
+```
 
 ### What a mode does not change
 
@@ -358,8 +465,12 @@ npx entity-id sql                  # print the migration
 `prefixGatedEntityIdSchema`, `toEntityId`
 
 **Modes** — `setValidationMode`, `getValidationMode`, `resetValidationMode`,
-`withValidationMode`, `getModeProfile`, `resolveModeProfile`, and the types
-`ValidationMode`, `ValidationDepth`, `ValidationOptions`, `ModeProfile`
+`withValidationMode` (synchronous), `getModeProfile`, `resolveModeProfile`, and
+the types `ValidationMode`, `ValidationDepth`, `ValidationOptions`,
+`ModeProfile`
+
+**Async modes** (`entity-id/async`) — `withValidationModeAsync`,
+`bindValidationMode`, `hasAsyncModeScope`
 
 **Inspecting** — `parseEntityId`, `safeParseEntityId`, `normalizeEntityId`,
 `entityIdPrefix`, `entityIdToTimeMs`, `entityIdToDate`, `entityIdToIso`,
