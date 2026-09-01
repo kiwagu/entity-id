@@ -26,7 +26,9 @@
     "paths": {
       "entity-id": ["./src/index.ts"],
       "entity-id/async": ["./src/async.ts"],
-      "entity-id/sql": ["./src/sql.ts"]
+      "entity-id/sql": ["./src/sql.ts"],
+      "entity-id/schema": ["./src/schema.ts"],
+      "entity-id/registry": ["./src/registry.ts"]
     }
   },
   "include": [
