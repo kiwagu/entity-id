@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+*.tmp
+.db_ids.tmp
+.ts_ids.tmp
+.DS_Store
+*.log
+.idea/
+.vscode/

@@ -1,0 +1,102 @@
+{
+  "name": "entity-id",
+  "version": "1.0.0",
+  "description": "Prefixed, time-sortable entity identifiers (<prefix>_<rand16>.<ts10>) with branded TypeScript types, a Zod validator/codec, a prefix registry and a matching Postgres generator. Works in Node, Bun, Deno, workers and the browser.",
+  "keywords": [
+    "id",
+    "identifier",
+    "ulid",
+    "uuid",
+    "prefixed-id",
+    "typeid",
+    "branded-types",
+    "nominal-typing",
+    "zod",
+    "validation",
+    "postgres",
+    "primary-key",
+    "isomorphic",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "Kiwagu <kiwagu@gmail.com>",
+  "homepage": "https://github.com/kiwagu/entity-id#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kiwagu/entity-id.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kiwagu/entity-id/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "entity-id": "./dist/cli.cjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./sql": {
+      "types": "./dist/sql.d.ts",
+      "import": "./dist/sql.js",
+      "require": "./dist/sql.cjs",
+      "default": "./dist/sql.js"
+    },
+    "./entity_id_generate.sql": "./sql/entity_id_generate.sql",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "sql",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": false
+  },
+  "scripts": {
+    "build": "npm run sql:codegen && tsup",
+    "sql:codegen": "node scripts/generate-sql-module.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run sql:codegen && npm run format:check && npm run lint && npm run typecheck && npm run test",
+    "prepublishOnly": "npm run clean && npm run check && npm run build"
+  },
+  "dependencies": {
+    "ulid": "^3.0.2",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run sql:codegen
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Pack and install into a clean ESM project
+        run: |
+          npm pack
+          mkdir -p /tmp/esm && cd /tmp/esm
+          npm init -y >/dev/null && npm pkg set type=module
+          npm i "$GITHUB_WORKSPACE"/entity-id-*.tgz
+          node --input-type=module -e "
+            import { createEntityId, isEntityId } from 'entity-id';
+            const id = createEntityId('usr');
+            if (!isEntityId(id)) { throw new Error('ESM import failed'); }
+            console.log('ESM ok:', id);
+          "
+      - name: Install into a clean CommonJS project
+        run: |
+          mkdir -p /tmp/cjs && cd /tmp/cjs
+          npm init -y >/dev/null
+          npm i "$GITHUB_WORKSPACE"/entity-id-*.tgz
+          node -e "
+            const { createEntityId, isEntityId } = require('entity-id');
+            const id = createEntityId('usr');
+            if (!isEntityId(id)) { throw new Error('CJS require failed'); }
+            console.log('CJS ok:', id);
+          "
+
+  postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Cross-check the SQL contract against a real PostgreSQL
+        run: ./scripts/verify-sql-crosscheck.sh

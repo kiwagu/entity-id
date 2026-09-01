@@ -1,0 +1,6 @@
+dist
+coverage
+node_modules
+src/sql.generated.ts
+sql
+*.md
