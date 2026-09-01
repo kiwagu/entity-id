@@ -388,6 +388,34 @@ prefix.
 > the underlying `ulid` library re-seeds its CSPRNG on every call. The default
 > monotonic path is unaffected. Avoid `monotonic: false` in a hot loop.
 
+## Security
+
+The package is a validator, so it is expected to meet hostile input. What it
+guarantees, and what it asks of you:
+
+- **No ReDoS.** Every quantifier in the id patterns is bounded, so matching is
+  linear. Verified against 50 KB adversarial payloads — prefix floods, separator
+  floods, near-miss bodies — all in single-digit milliseconds.
+- **SQL helpers validate their inputs.** `entityIdColumnSql`,
+  `entityIdCheckSql` and `entityIdDefaultSql` build SQL by concatenation, so
+  both the prefix and the column name must be plain lowercase identifiers.
+  Anything else throws rather than reaching the statement.
+- **No prototype pollution.** A registry never writes to `Object.prototype`,
+  inherited members (`toString`, `constructor`) are not treated as registered
+  kinds, and prototype names are rejected as kind names.
+- **Type-safe guards.** `isEntityId` returns `false` for any non-string,
+  including objects with a crafted `toString`.
+- **CSPRNG randomness**, from `ulid` — see the design trade-off below.
+- **No runtime dependency has install scripts**, and the dependency tree is two
+  packages deep with nothing transitive.
+
+**Where the responsibility is yours:** in `fast` mode nothing is validated, so
+`assert()` brands a value it never checked. Use it only for data whose
+provenance already guarantees the format. The default `mixed` mode is safe.
+
+Adversarial cases are pinned in `src/security.spec.ts`, so a regression fails
+the build rather than shipping.
+
 ## Design trade-offs
 
 Three decisions are deliberate, and worth stating plainly rather than leaving

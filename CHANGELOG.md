@@ -63,6 +63,20 @@ First public release.
   tarball into throwaway ESM and CommonJS projects and exercises the public API
   there, so bundling faults cannot reach a release.
 
+### Security
+
+- `entityIdCheckSql` no longer interpolates an unvalidated column name. It
+  accepted `entityIdCheckSql('id; drop table t', 'usr')` and emitted the
+  injected SQL verbatim, while `entityIdColumnSql` validated the same argument
+  — the check now lives in one shared helper used by both, and also rejects
+  identifiers past PostgreSQL's 63-character limit.
+- `defineEntityPrefixes` rejects `__proto__`, `constructor` and `prototype` as
+  entity kinds. Not exploitable (the registry never wrote to `Object.prototype`)
+  but ambiguous to read and debug.
+- Added `src/security.spec.ts`: ReDoS resistance under 50 KB payloads, SQL
+  injection through every helper, prototype pollution, type confusion,
+  randomness quality, and Unicode homoglyph input.
+
 ### Fixed
 
 - Async mode scopes now work in the **built** package. Multi-entry bundling

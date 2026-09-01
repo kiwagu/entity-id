@@ -151,6 +151,16 @@ export type EntityIdRegistry<TMap extends EntityPrefixMap> = Readonly<{
   assertKnown: (value: string) => EntityId;
 }>;
 
+/**
+ * Object-prototype member names, rejected as entity kinds. Using one is not
+ * exploitable here, but it makes the registry's key space ambiguous to read.
+ */
+const RESERVED_KIND_NAMES: ReadonlySet<string> = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+]);
+
 function makeToolkit<
   TMap extends EntityPrefixMap,
   K extends keyof TMap & string,
@@ -223,6 +233,16 @@ export function defineEntityPrefixes<const TMap extends EntityPrefixMap>(
 
   const seen = new Map<string, string>();
   for (const [kind, prefix] of entries) {
+    // Not exploitable — `Object.fromEntries` creates own properties, so
+    // `Object.prototype` is never touched — but a kind named `__proto__` or
+    // `constructor` makes every later lookup ambiguous to read and to debug.
+    // Rejecting them keeps the registry's key space plain.
+    if (RESERVED_KIND_NAMES.has(kind)) {
+      throw new EntityIdError(
+        `Reserved entity kind "${kind}". Object-prototype names cannot be used as kinds.`,
+        kind
+      );
+    }
     if (!PREFIX_RE.test(prefix)) {
       throw new EntityIdError(
         `Invalid prefix "${prefix}" for kind "${kind}". Expected ${PREFIX_RE.source}.`,
