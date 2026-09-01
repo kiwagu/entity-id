@@ -21,10 +21,35 @@ trap cleanup EXIT
 echo "==> starting $PG_IMAGE"
 docker run -d --rm --name "$CONTAINER" -e POSTGRES_PASSWORD=pg "$PG_IMAGE" >/dev/null
 
-for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+# Waiting for readiness is subtler than it looks. During initdb the postgres
+# entrypoint runs a TEMPORARY server that listens on the unix socket ONLY, then
+# stops it and starts the real one. A unix-socket `pg_isready` therefore reports
+# success against that temporary server, and a script racing ahead hits the
+# socket exactly as it is torn down — the CI failure was:
+#
+#   psql: error: connection to server on socket ".s.PGSQL.5432" failed:
+#   No such file or directory
+#
+# The temporary server runs with listen_addresses='', so TCP is the honest
+# signal: only the real server ever accepts it. We additionally run a trivial
+# query, because "accepting connections" still precedes "can serve a session".
+ready=""
+for _ in $(seq 1 90); do
+  if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1 &&
+    docker exec "$CONTAINER" psql -U postgres -At -c 'select 1' >/dev/null 2>&1; then
+    ready=yes
+    break
+  fi
   sleep 1
 done
+
+# Without this the loop would fall through silently and fail later inside psql
+# with a confusing socket error, hiding the real cause: postgres never started.
+if [ -z "$ready" ]; then
+  echo "FAIL: postgres did not become ready within 90s" >&2
+  docker logs "$CONTAINER" 2>&1 | tail -30 >&2
+  exit 1
+fi
 
 psql_c() { docker exec "$CONTAINER" psql -U postgres -At -v ON_ERROR_STOP=1 "$@"; }
 
