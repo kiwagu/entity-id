@@ -1,7 +1,7 @@
 {
   "name": "entity-id",
   "version": "1.0.0",
-  "description": "Prefixed, timestamped entity identifiers (<prefix>_<rand16>.<ts10>) with branded TypeScript types, a Zod validator/codec, a prefix registry and a matching Postgres generator. Works in Node, Bun, Deno, workers and the browser.",
+  "description": "Readable, prefixed IDs that TypeScript won't let you mix up — a usr_ id is never an ord_ id, and the compiler agrees. Zod validation, a prefix registry, and matching Postgres SQL that mints the same format. Works in Node, Bun, Deno, workers and the browser.",
   "keywords": [
     "id",
     "identifier",
