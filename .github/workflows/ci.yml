@@ -124,3 +124,23 @@ jobs:
       - run: npm run build
       - name: Cross-check the SQL contract against a real PostgreSQL
         run: ./scripts/verify-sql-crosscheck.sh
+
+  lockfile:
+    # package-lock.json also records package.json's own version, bin target and
+    # engines, and `npm ci` validates only the dependency graph — so those three
+    # fields drifted from 1.0.0 all the way to 1.1.0 with every job green.
+    # Re-resolving the lock on a clean tree must therefore be a no-op.
+    # npm is pinned because npm 11 and 12 disagree about the `libc` field on
+    # optional native packages: whichever the runner happened to ship would
+    # rewrite the lock and make this check fail for no real reason.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm i -g npm@12
+      - run: npm i --package-lock-only
+      - name: The committed lockfile must already match package.json
+        run: git diff --exit-code package-lock.json
