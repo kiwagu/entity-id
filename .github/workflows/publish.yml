@@ -21,9 +21,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # Trusted publishing needs npm >= 11.5.1; Node 24 ships well past it.
           node-version: 24
-          registry-url: https://registry.npmjs.org
+      # Deliberately no `registry-url` above: it writes an .npmrc pinning the
+      # auth token to NODE_AUTH_TOKEN, which is unset here — npm would then
+      # authenticate with an empty token instead of exchanging the OIDC one.
+      # The default registry is already registry.npmjs.org.
+      - name: npm must be new enough to understand trusted publishing
+        run: |
+          npm install -g npm@latest
+          node -v && npm -v
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "OIDC: request URL present"
+          else
+            echo "OIDC: MISSING — the id-token permission did not reach this step"
+            exit 1
+          fi
       - name: The tag must name the version it publishes
         if: startsWith(github.ref, 'refs/tags/')
         run: |
