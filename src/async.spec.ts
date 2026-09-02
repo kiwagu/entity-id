@@ -18,6 +18,15 @@ afterEach(() => {
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// A promise plus its resolver, so one task can hand control to the next.
+const deferred = () => {
+  let resolve: () => void = () => {};
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+};
 const HALF_VALID = 'usr_not-canonical';
 
 describe('withValidationMode rejects async callbacks', () => {
@@ -68,20 +77,31 @@ describe('withValidationModeAsync', () => {
     setValidationMode('mixed');
     const seen: string[] = [];
 
+    // The interleaving is choreographed, not timed. Sleeps of 2, 6 and 10 ms
+    // read as ordered, but the three tasks arm their timers one after another,
+    // so a loaded machine can start the 6 ms one late enough to expire after
+    // the 10 ms one — the order then flips and the test fails on the
+    // scheduler rather than on the isolation it is meant to check.
+    const bDone = deferred();
+    const cDone = deferred();
+
     await Promise.all([
       withValidationModeAsync('full', async () => {
-        await sleep(10);
+        // Suspended inside its own scope for the whole of B and C.
+        await cDone.promise;
         seen.push(`A:${getValidationMode()}`);
         expect(isEntityId(HALF_VALID)).toBe(false);
       }),
       withValidationModeAsync('fast', async () => {
-        await sleep(2);
+        await sleep(1);
         seen.push(`B:${getValidationMode()}`);
         expect(isEntityId('anything')).toBe(true);
+        bDone.resolve();
       }),
       (async () => {
-        await sleep(6);
+        await bDone.promise;
         seen.push(`C:${getValidationMode()}`);
+        cDone.resolve();
       })(),
     ]);
 
