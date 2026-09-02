@@ -1,0 +1,39 @@
+name: Publish
+
+# Trusted publishing: npm authenticates this workflow through GitHub's OIDC
+# token instead of a publish token, so no npm credential exists to leak or
+# expire, and no one-time password is needed. npmjs.com must list this exact
+# filename as the package's trusted publisher.
+on:
+  push:
+    tags: ['v*']
+  # Lets a release be published without re-cutting its tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token npm reads in place of a publish token
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Trusted publishing needs npm >= 11.5.1; Node 24 ships well past it.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: The tag must name the version it publishes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json $version"
+            exit 1
+          fi
+      - run: npm ci
+      # prepublishOnly runs clean + check + build, so every gate is inside this
+      # step; provenance is attached automatically under trusted publishing.
+      - run: npm publish

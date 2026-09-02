@@ -76,8 +76,7 @@
     "LICENSE"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": false
+    "access": "public"
   },
   "scripts": {
     "build": "npm run sql:codegen && tsup",
