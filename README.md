@@ -378,11 +378,13 @@ brand normally means "this was validated"; in `fast` that promise is transferred
 to you. Use it only where the data provenance already guarantees the format.
 
 **`mixed` is not a security boundary either.** It checks the `<prefix>_` head
-and nothing after it, so under the default mode all of these parse:
+and nothing after it. Whatever follows is returned untouched — quotes, SQL
+fragments, a payload hundreds of characters long — so under the default mode
+both of these parse:
 
 ```ts
-memoryId.schema.parse("mem_' OR 1=1--");   // accepted: the head is correct
-memoryId.schema.parse('oac_' + 'x'.repeat(200));  // accepted: no length bound
+memoryId.schema.parse('mem_' + untrustedInput); // accepted: the head is correct
+memoryId.schema.parse('oac_' + 'x'.repeat(200)); // accepted: no length bound
 ```
 
 That is the intended trade — `mixed` catches the mistake that actually happens
