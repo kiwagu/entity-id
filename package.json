@@ -1,6 +1,6 @@
 {
   "name": "entity-id",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "A DX-friendly entity ID toolkit: prefixed, self-describing IDs with branded TypeScript types, Zod schemas, a prefix registry and a matching Postgres generator. Isomorphic and ESM-only; ~3 KB until you import the schemas.",
   "keywords": [
     "id",
