@@ -34,7 +34,7 @@
     "node": ">=20.19"
   },
   "bin": {
-    "entity-id": "./dist/cli.js"
+    "entity-id": "dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
