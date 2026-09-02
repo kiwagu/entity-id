@@ -12,6 +12,15 @@ the registry — the publish path was being moved off a personal token and onto
 trusted publishing. The packaged files are unchanged, so everything listed
 under 1.1.1 and 1.1.0 ships here.
 
+### Changed
+
+- The README describes what `mixed` accepts instead of embedding a sample
+  injection string. The literal payload was what had kept the package from
+  being published at all: every release attempt carrying it was refused by the
+  registry, and the same tarball went through once the line was reworded. The
+  warning itself is unchanged — if anything sharper, since the text now says
+  outright that the tail is returned untouched.
+
 ## [1.1.1] - 2026-09-02
 
 Re-release of 1.1.0, which was tagged but never reached the registry. The

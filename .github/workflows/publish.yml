@@ -53,4 +53,4 @@ jobs:
       # with a second factor on npmjs.com and only then does it go live.
       # prepublishOnly still runs clean + check + build, so every gate is inside
       # this step, and provenance is attached the same way.
-      - run: npm stage publish --loglevel verbose
+      - run: npm stage publish
