@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-02
+
+Re-release of 1.1.0, which was tagged but never reached the registry. The
+packaged files are identical, so everything listed under 1.1.0 ships here.
+
+### Fixed
+
+- `package-lock.json` no longer drifts from `package.json`. Since 1.0.0 it had
+  kept recording version `1.0.0`, `dist/cli.cjs` as the `bin` target and
+  `node >=18`; `npm ci` validates only the dependency graph and never reads
+  those fields, so no pipeline could catch it. The lockfile is not part of the
+  published tarball — no released artifact was affected, and the stale metadata
+  only reached people cloning the repository.
+
+### Repository
+
+- CI now re-resolves the lockfile on a clean tree and fails if it moves, so the
+  drift above cannot come back unnoticed. The step pins npm, because npm 11 and
+  12 disagree about the `libc` field on optional native packages and an
+  unpinned runner would rewrite the lock on its own.
+- `allowScripts` denies esbuild's `postinstall` (npm 12 blocks unreviewed
+  install scripts and asks for a decision). The script only swaps the `esbuild`
+  CLI shim for the native binary; both `tsup` and `vitest` reach esbuild
+  through its JavaScript API, and the full build and test suite pass without it.
+  The field is project-local policy and has no effect on anyone installing this
+  package.
+
 ## [1.1.0] - 2026-09-02
 
 Prompted by a review of the first real adoption of 1.0.0, which found that the
@@ -165,4 +192,6 @@ First public release.
   a single-character slug; the result is padded to the minimum length so the
   function's contract always holds.
 
+[1.1.1]: https://github.com/kiwagu/entity-id/releases/tag/v1.1.1
+[1.1.0]: https://github.com/kiwagu/entity-id/releases/tag/v1.1.0
 [1.0.0]: https://github.com/kiwagu/entity-id/releases/tag/v1.0.0
