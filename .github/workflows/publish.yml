@@ -48,4 +48,4 @@ jobs:
       - run: npm ci
       # prepublishOnly runs clean + check + build, so every gate is inside this
       # step; provenance is attached automatically under trusted publishing.
-      - run: npm publish
+      - run: npm publish --loglevel verbose
