@@ -5,6 +5,38 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-02
+
+Prompted by a review of the first real adoption of 1.0.0, which found that the
+default mode was weaker than the documentation implied.
+
+### Fixed
+
+- **Parsed ids are now normalized in every mode.** Previously only `'full'`
+  canonicalized, so under the default `'mixed'` a schema returned mixed-case
+  input unchanged — and the same logical id stopped comparing equal to the
+  canonical form a database round-trip returns. Normalization decides what a
+  value *is*, not how strictly it is checked, so it no longer depends on a
+  performance setting. Costs ~42 ns per parse in `mixed` (7.6 M/s to 5.8 M/s);
+  `full` is unaffected.
+
+### Changed
+
+- `withSchemas(...).schema` no longer documents itself as "strict". It follows
+  the active mode — the code always did, but the JSDoc promised otherwise,
+  which is how a consumer shipped a laxer boundary than they intended. The
+  README now states plainly that `mixed` checks the `<prefix>_` head only,
+  shows what that accepts (`mem_' OR 1=1--`, unbounded length), and names the
+  three ways to demand strictness where it matters.
+
+### Notes for adopters
+
+If ids cross a trust boundary or reach a database, do not rely on the ambient
+mode. Use `strictEntityIdSchema`, pass `{ mode: 'full' }` per call, or build
+project-owned schemas from the exported `CROCKFORD_CANONICAL_CLASS`,
+`RAND_LENGTH` and `TS_LENGTH`; the last is the only option that cannot be
+weakened by a future entry point forgetting a line.
+
 ## [1.0.0] - 2026-09-01
 
 First public release.

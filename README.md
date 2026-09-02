@@ -193,8 +193,10 @@ const CreateOrder = z.object({
 ```
 
 The ULID segments are accepted in mixed case and normalized to canonical
-lowercase on the way through. The prefix itself is lowercase-only, so an
-upper-cased prefix is rejected rather than silently coerced.
+lowercase on the way through — in **every** mode, because normalization decides
+what a value IS rather than how strictly it is checked. The prefix itself is
+lowercase-only, so an upper-cased prefix is rejected rather than silently
+coerced.
 
 ### JSON Schema
 
@@ -374,7 +376,21 @@ Some guarantees are structural and hold in every mode:
 In `fast` mode `assert()` returns a branded value **without checking it**. The
 brand normally means "this was validated"; in `fast` that promise is transferred
 to you. Use it only where the data provenance already guarantees the format.
-`mixed` exists precisely so that the default is safe.
+
+**`mixed` is not a security boundary either.** It checks the `<prefix>_` head
+and nothing after it, so under the default mode all of these parse:
+
+```ts
+memoryId.schema.parse("mem_' OR 1=1--");   // accepted: the head is correct
+memoryId.schema.parse('oac_' + 'x'.repeat(200));  // accepted: no length bound
+```
+
+That is the intended trade — `mixed` catches the mistake that actually happens
+(a wrong-*kind* id in the wrong slot) at a fraction of the cost. It is not a
+sanitizer. Where a value crosses a trust boundary or reaches a database, ask for
+strictness explicitly: `strictEntityIdSchema`, `{ mode: 'full' }` on a call, or
+your own schema built from the exported `CROCKFORD_CANONICAL_CLASS`,
+`RAND_LENGTH` and `TS_LENGTH`.
 
 ### JSON Schema is unaffected
 

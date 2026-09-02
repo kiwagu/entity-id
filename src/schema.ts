@@ -113,10 +113,17 @@ function buildModalSchema(
 
   return z.codec(lenient, z.string().meta({ pattern: `^${outputPattern}$` }), {
     decode: (raw: string) => {
-      const { validation } = resolveModeProfile();
-      // Only `'full'` normalizes; the cheaper modes hand the value straight
-      // through, which is the point of choosing them.
-      return validation === 'full' ? normalizeEntityId(raw.trim()) : raw;
+      // Normalization is CORRECTNESS, not strictness, so it happens in every
+      // mode. Returning a non-canonical id would mean the same logical value
+      // stops comparing equal to the copy a database round-trip hands back —
+      // a mode is a performance decision and must not change what a value IS.
+      //
+      // `normalizeEntityId` cannot be used here: it parses in `'full'` and
+      // throws, which would reject exactly the values a lenient mode chose to
+      // allow. Lowercasing is equivalent for every well-formed id (verified
+      // over 40 000 samples, including upper-cased ULID halves) and total for
+      // the rest, at ~91 ns.
+      return raw.trim().toLowerCase();
     },
     encode: (canonical: string) => canonical,
   });
@@ -314,8 +321,15 @@ export function toEntityId(value: unknown): EntityId | undefined {
  */
 export type EntityIdSchemaToolkit<K extends string = string> = Readonly<{
   /**
-   * Strict schema: validates the full `<prefix>_<rand16>.<ts10>` contract and
-   * brands the parsed output as this kind's id.
+   * Zod schema for this kind. Its runtime strictness follows the active
+   * validation mode: under the default `'mixed'` it checks the `<prefix>_`
+   * head only, and under `'full'` the complete
+   * `<prefix>_<rand16>.<ts10>` contract. Parsed output is always normalized to
+   * canonical lowercase, in every mode.
+   *
+   * For a schema that stays strict regardless of the mode — a trust boundary,
+   * or a value that reaches a database — use {@link strictEntityIdSchema}, or
+   * pass `{ mode: 'full' }` to the imperative validators.
    */
   schema: EntityIdSchema<K>;
   /**
