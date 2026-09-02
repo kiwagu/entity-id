@@ -2,8 +2,9 @@ name: Publish
 
 # Trusted publishing: npm authenticates this workflow through GitHub's OIDC
 # token instead of a publish token, so no npm credential exists to leak or
-# expire, and no one-time password is needed. npmjs.com must list this exact
-# filename as the package's trusted publisher.
+# expire. npmjs.com must list this exact filename as the package's trusted
+# publisher. Publishing is a two-step flow — this workflow only stages the
+# version; a maintainer then approves it on npmjs.com to make it installable.
 on:
   push:
     tags: ['v*']
@@ -46,6 +47,10 @@ jobs:
             exit 1
           fi
       - run: npm ci
-      # prepublishOnly runs clean + check + build, so every gate is inside this
-      # step; provenance is attached automatically under trusted publishing.
-      - run: npm publish --loglevel verbose
+      # Staged, not direct: npm requires proof of presence on every publish,
+      # and a CI credential cannot supply one — an OIDC token included. This
+      # uploads the tarball to the stage queue, where a maintainer approves it
+      # with a second factor on npmjs.com and only then does it go live.
+      # prepublishOnly still runs clean + check + build, so every gate is inside
+      # this step, and provenance is attached the same way.
+      - run: npm stage publish --loglevel verbose
