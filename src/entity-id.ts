@@ -469,7 +469,7 @@ export function assertEntityId(
 /**
  * Assert that a value is an entity id carrying `prefix`, and return it.
  *
- * For a prefix known at compile time, prefer the toolkit produced by
+ * For a prefix known at compile time, prefer the factory produced by
  * `defineEntityPrefixes`, whose `assert` is branded per kind.
  *
  * @param value - Candidate string.
@@ -609,7 +609,7 @@ function decodeEntityId(
  * ```ts
  * parseEntityId('usr_a1b2c3d4e5f6g7h8.01jd8x2p4q');
  * // { prefix: 'usr', rand: 'a1b2…', ts: '01jd…', ulid: '01JD…',
- * //   timeMs: 1731…, iso: '2024-11-…Z' }
+ * //   timeMs: 1732…, iso: '2024-11-22…Z' }
  * ```
  *
  * @public

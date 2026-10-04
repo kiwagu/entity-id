@@ -137,7 +137,7 @@ for (const mode of ['fast', 'mixed', 'full'] as const) {
   );
 }
 
-for (const mode of ['fast', 'full'] as const) {
+for (const mode of ['fast', 'mixed', 'full'] as const) {
   bench(`Decoding — ${mode}`, 'parseEntityId', () =>
     parseEntityId(ID, { mode })
   );

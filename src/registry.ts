@@ -126,7 +126,9 @@ export type EntityIdRegistry<TMap extends EntityPrefixMap> = Readonly<{
    * shadowing your entities:
    * `const { userIdFactory, orderIdFactory } = registry.factories;`.
    *
-   * The key is the kind name followed by `IdFactory`.
+   * The key is the kind name followed by `IdFactory`, so a kind named
+   * `userId` yields `userIdIdFactory`; name kinds after the entity (`user`),
+   * not after its id.
    */
   factories: {
     readonly [K in keyof TMap & string as `${K}IdFactory`]: EntityIdFactory<

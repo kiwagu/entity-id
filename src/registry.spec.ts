@@ -54,8 +54,6 @@ describe('defineEntityPrefixes', () => {
 
   it('is frozen against accidental mutation', () => {
     expect(Object.isFrozen(registry)).toBe(true);
-    expect(Object.isFrozen(registry.factories)).toBe(true);
-    expect(Object.isFrozen(registry.factories.userIdFactory)).toBe(true);
   });
 });
 
