@@ -148,10 +148,10 @@ describe('prototype pollution', () => {
       ctor: 'constructor',
       user: 'usr',
     } as const);
-    const id = registry.ids.ctor.create();
+    const id = registry.factories.ctorIdFactory.create();
 
     expect(registry.kindOf(id)).toBe('ctor');
-    expect(registry.ids.user.is(id)).toBe(false);
+    expect(registry.factories.userIdFactory.is(id)).toBe(false);
     // A prototype member name must not masquerade as a registered prefix.
     expect(registry.isRegisteredPrefix('toString')).toBe(false);
     expect(registry.kindForPrefix('toString')).toBeUndefined();

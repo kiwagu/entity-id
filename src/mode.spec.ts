@@ -285,7 +285,9 @@ describe('mode-independent behaviour', () => {
   it('the registry still routes a known prefix in fast mode', () => {
     const registry = defineEntityPrefixes({ user: 'usr' } as const);
     withValidationMode('fast', () => {
-      expect(registry.kindOf(registry.ids.user.create())).toBe('user');
+      expect(registry.kindOf(registry.factories.userIdFactory.create())).toBe(
+        'user'
+      );
       expect(registry.kindOf('zzz_whatever')).toBeUndefined();
     });
   });
@@ -347,9 +349,9 @@ describe('initialization order does not matter', () => {
   });
 
   it('a registry guard built earlier obeys it too', () => {
-    expect(earlyRegistry.ids.user.is(HALF_VALID)).toBe(true); // mixed
+    expect(earlyRegistry.factories.userIdFactory.is(HALF_VALID)).toBe(true); // mixed
     setValidationMode('full');
-    expect(earlyRegistry.ids.user.is(HALF_VALID)).toBe(false);
+    expect(earlyRegistry.factories.userIdFactory.is(HALF_VALID)).toBe(false);
   });
 
   it('the module-level entityIdSchema follows the mode as well', () => {

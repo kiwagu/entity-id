@@ -35,7 +35,7 @@ console.log(
 );
 
 try {
-  registry.ids.user.assert(wrongKind);
+  registry.factories.userIdFactory.assert(wrongKind);
 } catch (error) {
   console.log(
     '  wrong kind      ',
@@ -67,7 +67,10 @@ withValidationMode('full', () => {
 console.log('\n[fast]');
 withValidationMode('fast', () => {
   console.log('  anything passes ', isEntityId(nonsense));
-  console.log('  even wrong kind ', registry.ids.user.is(wrongKind));
+  console.log(
+    '  even wrong kind ',
+    registry.factories.userIdFactory.is(wrongKind)
+  );
 });
 
 // --- per-call override -----------------------------------------------------

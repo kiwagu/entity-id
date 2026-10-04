@@ -47,7 +47,7 @@ console.log(createEntityId('usr'), isEntityId('x'), parseEntityId(createEntityId
     name: 'registry (no Zod expected)',
     code: `import { defineEntityPrefixes } from 'entity-id/registry';
 const r = defineEntityPrefixes({ user: 'usr', order: 'ord' });
-console.log(r.ids.user.create(), r.kindOf('usr_a'));`,
+console.log(r.factories.userIdFactory.create(), r.kindOf('usr_a'));`,
     maxGzipKb: 8,
     zod: false,
   },

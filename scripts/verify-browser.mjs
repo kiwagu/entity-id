@@ -83,9 +83,9 @@ results.distinctIds = many.size;
 results.distinctRandom = new Set([...many].map((v) => parseEntityId(v).rand)).size;
 
 const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
-const userId = registry.ids.user.create();
+const userId = registry.factories.userIdFactory.create();
 results.kindOf = registry.kindOf(userId);
-results.crossKind = registry.ids.order.is(userId);
+results.crossKind = registry.factories.orderIdFactory.is(userId);
 results.jsonSchema = String(withSchemas(registry).user.jsonSchema().pattern).includes('usr_');
 
 const a = createEntityId('usr', { timeMs: 1000, monotonic: false });

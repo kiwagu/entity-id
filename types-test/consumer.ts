@@ -29,8 +29,11 @@ const registry = defineEntityPrefixes({
 type UserId = EntityIdOf<typeof registry.prefixes, 'user'>;
 type OrderId = EntityIdOf<typeof registry.prefixes, 'order'>;
 
-const userId: UserId = registry.ids.user.create();
-const orderId: OrderId = registry.ids.order.create();
+const userId: UserId = registry.factories.userIdFactory.create();
+const orderId: OrderId = registry.factories.orderIdFactory.create();
+
+// The deprecated `ids` map must keep type-checking until the next major.
+const deprecatedUserId: UserId = registry.ids.user.create();
 
 /* ── The core claim: a plain string is not an id ─────────────────────────── */
 
@@ -84,9 +87,9 @@ const asserted: EntityId = assertEntityId('usr_a1b2c3d4e5f6g7h8.01jd8x2p4q');
 
 /* ── The prefix keeps its literal type through the registry ──────────────── */
 
-const literalPrefix: 'usr' = registry.ids.user.prefix;
+const literalPrefix: 'usr' = registry.factories.userIdFactory.prefix;
 // @ts-expect-error the prefix is the literal 'usr', not 'ord'
-const wrongLiteral: 'ord' = registry.ids.user.prefix;
+const wrongLiteral: 'ord' = registry.factories.userIdFactory.prefix;
 
 /* ── Kind names are checked at compile time ──────────────────────────────── */
 
@@ -94,13 +97,13 @@ registry.prefixFor('user');
 // @ts-expect-error 'nope' is not a registered kind
 registry.prefixFor('nope');
 
-// @ts-expect-error there is no such toolkit
-registry.ids.nope.create();
+// @ts-expect-error there is no such factory
+registry.factories.nopeIdFactory.create();
 
 /* ── Guards narrow rather than merely returning boolean ──────────────────── */
 
 const unknownValue: string = 'usr_a1b2c3d4e5f6g7h8.01jd8x2p4q';
-if (registry.ids.user.is(unknownValue)) {
+if (registry.factories.userIdFactory.is(unknownValue)) {
   const narrowed: UserId = unknownValue;
   void narrowed;
 }
@@ -122,6 +125,7 @@ export {
   decodedIso,
   decodedPrefix,
   decodedTime,
+  deprecatedUserId,
   literalPrefix,
   minted,
   notAUserId,
