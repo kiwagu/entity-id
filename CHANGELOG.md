@@ -41,9 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mixed` mode lets through but whose time does not decode (`usr_abc.def` under
   the default mode): it returns `''` for the ISO time and `NaN` for the time,
   as `parseEntityId` does.
-- The CLI's `inspect` command decodes with full validation, so a malformed id
-  exits 1 with the `EntityIdError` message instead of the
-  `RangeError: Invalid time value` it raised by accident.
+- The CLI's `inspect` command decodes with full validation. It used to decode
+  under the default `mixed` mode, which checks only the `<prefix>_` head, so a
+  malformed id behind a valid head either printed a meaningless decode and
+  exited 0, or, when its time did not decode, failed with the unrelated
+  `Invalid time value` message. Any malformed id now exits 1 with the
+  `EntityIdError` message.
 - Dependencies: `zod` 4.6, ESLint 10 and the current dev toolchain. With zod
   4.6 the `entity-id/schema` entry bundles to ~93 KB gzip, up from ~88 KB; the
   main entry and the registry still carry no Zod. `vitest` stays on 4 while

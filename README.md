@@ -50,8 +50,8 @@ parseEntityId(id);
 //   rand:   'a1b2c3d4e5f6g7h8',
 //   ts:     '01jd8x2p4q',
 //   ulid:   '01JD8X2P4QA1B2C3D4E5F6G7H8',
-//   timeMs: 1731412345678,
-//   iso:    '2024-11-12T11:52:25.678Z',
+//   timeMs: 1732244494487,
+//   iso:    '2024-11-22T03:01:34.487Z',
 // }
 ```
 
@@ -137,6 +137,8 @@ defineEntityPrefixes({ program: 'prg', progress: 'prg' });
 
 | Member | Purpose |
 | --- | --- |
+| `kind` | The entity kind the factory is bound to |
+| `prefix` | The registered wire prefix, typed as its literal (`'usr'`) |
 | `create(options?)` | Mint a fresh branded id |
 | `is(value)` | Type guard narrowing to this kind |
 | `assert(value)` | Throwing parse at a boundary |
@@ -409,7 +411,7 @@ the ratios are the point):
 | --- | --- | --- | --- |
 | `isEntityId` | 237 M/s | 36 M/s | 15 M/s |
 | `assertEntityIdWithPrefix` | 208 M/s | 13 M/s | 1.4 M/s |
-| `parseEntityId` | 1.8 M/s | 1.7 M/s | 953 K/s |
+| `parseEntityId` | 1.8 M/s | 1.7 M/s | 0.95 M/s |
 
 `parseEntityId` renders the ISO time eagerly, while `entityIdToTimeMs`,
 `normalizeEntityId` and `compareEntityIds` decode without it: `entityIdToTimeMs`
@@ -440,8 +442,10 @@ module state duplicated across entry points.
 | `scripts/verify-sql-crosscheck.sh` | SQL and TypeScript agree, against a live PostgreSQL |
 | `npm run bench` | throughput per mode, against `ulid` and `randomUUID` baselines |
 
-All of them but the benchmark run in CI, plus a Node matrix (20/22/24) and a
-TypeScript matrix (5.4/5.5/5.9/7.0).
+CI runs every one of them except the benchmark and the Prettier step of
+`npm run check`, which run locally. It also runs the tests on a Node matrix
+(20/22/24) and type-checks a consumer against a TypeScript matrix
+(5.4/5.5/5.9/7.0, `skipLibCheck` off).
 
 ## Module format and bundle cost
 
