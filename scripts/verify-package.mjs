@@ -69,6 +69,7 @@ out.mints = m.isEntityId(id, { mode: 'full' });
 out.defaultMode = m.getValidationMode();
 out.mixedAcceptsHead = m.isEntityId(HALF);
 out.fullRejectsHead = m.isEntityId(HALF, { mode: 'full' });
+out.parseIso = m.parseEntityId(id).iso === new Date(m.parseEntityId(id).timeMs).toISOString();
 out.sql = s.ENTITY_ID_SQL.includes('entity_id_generate');
 
 // The registry must work without the schema module, and withSchemas must
@@ -115,6 +116,7 @@ process.stdout.write(JSON.stringify(out));
     check('default mode is mixed', r.defaultMode, 'mixed');
     check('mixed accepts a prefixed body', r.mixedAcceptsHead, true);
     check('full rejects it', r.fullRejectsHead, false);
+    check('parse carries iso', r.parseIso, true);
     check('sql entry point loads', r.sql, true);
     check('registry entry point works', r.registryMints, true);
     check('toolkit carries no schema', r.toolkitHasNoSchema, true);

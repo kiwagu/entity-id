@@ -148,7 +148,37 @@ describe('parseEntityId', () => {
       ts: SAMPLE_TS,
       ulid: SAMPLE_ULID,
       timeMs: SAMPLE_TIME_MS,
+      iso: new Date(SAMPLE_TIME_MS).toISOString(),
     });
+  });
+
+  it('carries the creation time as an ISO string in every mode', () => {
+    const id = createEntityId('usr', {
+      timeMs: 1_700_000_000_000,
+      monotonic: false,
+    });
+    const iso = entityIdToIso(id);
+    expect(parseEntityId(id).iso).toBe(iso);
+    expect(parseEntityId(id, { mode: 'fast' }).iso).toBe(iso);
+    expect(parseEntityId(id, { mode: 'full' }).iso).toBe(iso);
+    expect(safeParseEntityId(id)?.iso).toBe(iso);
+  });
+
+  it('serializes iso as plain data', () => {
+    const id = createEntityId('usr', {
+      timeMs: 1_700_000_000_000,
+      monotonic: false,
+    });
+    const parsed = parseEntityId(id);
+    expect(JSON.parse(JSON.stringify(parsed)).iso).toBe(entityIdToIso(id));
+    const descriptor = Object.getOwnPropertyDescriptor(parsed, 'iso');
+    expect(descriptor).toHaveProperty('value');
+    expect(descriptor).not.toHaveProperty('get');
+  });
+
+  it('decodes the Unix epoch to its ISO string', () => {
+    const id = createEntityId('usr', { timeMs: 0, monotonic: false });
+    expect(parseEntityId(id).iso).toBe('1970-01-01T00:00:00.000Z');
   });
 
   it('accepts mixed-case ULID segments and normalizes them', () => {

@@ -146,6 +146,7 @@ describe('fast mode', () => {
       const parsed = parseEntityId(NO_PREFIX);
       expect(parsed.prefix).toBe(NO_PREFIX);
       expect(Number.isNaN(parsed.timeMs)).toBe(true);
+      expect(parsed.iso).toBe('');
     });
   });
 });

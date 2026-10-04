@@ -113,11 +113,13 @@ if (isEntityId(unknownValue)) {
 
 const decodedPrefix: string = parseEntityId(userId).prefix;
 const decodedTime: number = parseEntityId(userId).timeMs;
+const decodedIso: string = parseEntityId(userId).iso;
 
 // Keep every binding used so `noUnusedLocals` stays satisfiable either way.
 export {
   asString,
   asserted,
+  decodedIso,
   decodedPrefix,
   decodedTime,
   literalPrefix,
