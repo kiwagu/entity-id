@@ -5,6 +5,59 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ParsedEntityId` carries `iso`, the creation time as an ISO 8601 string, so
+  the result of `parseEntityId` or `safeParseEntityId` can go straight into a
+  log line or an API response without a second decode. It is `''` when the
+  time does not decode, which only the `fast` and `mixed` modes let through.
+  The CLI's `inspect` output keeps its shape: it already printed `iso`, and now
+  takes it from the parse.
+- `registry.factories`: the per-kind factories keyed `<kind>IdFactory`, and the
+  `EntityIdFactory` type that names one. `registry.ids` keys each factory by the
+  bare kind, so destructuring it shadowed the entity variables beside it
+  (`user`, `order`); the new keys say what the value is:
+
+  ```ts
+  // before
+  const { user, order } = registry.ids;
+  // after
+  const { userIdFactory, orderIdFactory } = registry.factories;
+  ```
+
+  Both maps hold the same frozen factory objects.
+
+### Changed
+
+- `parseEntityId` builds the ISO string on every call, which costs about
+  0.4–0.5 µs: a `fast`-mode parse runs at ~1.8 M/s against ~7.3 M/s for the
+  same decoding without it, and a `full`-mode parse at ~0.95 M/s against
+  ~1.9 M/s. `entityIdToTimeMs`, `entityIdToDate`, `normalizeEntityId`,
+  `compareEntityIds`, `entityIdPrefix` and `toUlid` decode without it and are
+  unaffected.
+- `entityIdToTuple` no longer throws a `RangeError` on a value the `fast` or
+  `mixed` mode lets through but whose time does not decode (`usr_abc.def` under
+  the default mode): it returns `''` for the ISO time and `NaN` for the time,
+  as `parseEntityId` does.
+- The CLI's `inspect` command decodes with full validation, so a malformed id
+  exits 1 with the `EntityIdError` message instead of the
+  `RangeError: Invalid time value` it raised by accident.
+- Dependencies: `zod` 4.6, ESLint 10 and the current dev toolchain. With zod
+  4.6 the `entity-id/schema` entry bundles to ~93 KB gzip, up from ~88 KB; the
+  main entry and the registry still carry no Zod. `vitest` stays on 4 while
+  Node 20 is in the CI matrix, since vitest 5 requires Node 22.12 or newer. The
+  `typescript` devDependency stays on 5.9 because `typescript-eslint` supports
+  TypeScript only below 6.1; consumers are not held back, as the CI matrix
+  type-checks the declarations against TypeScript 7.0.
+
+### Deprecated
+
+- `registry.ids`, in favour of `registry.factories`, and the `EntityIdToolkit`
+  type, in favour of `EntityIdFactory`. Both keep working through 1.x; removal
+  is planned for the next major.
+
 ## [1.1.3] - 2026-09-02
 
 No change to the packaged code. Cut so that the tag, the published version and
@@ -215,6 +268,7 @@ First public release.
   a single-character slug; the result is padded to the minimum length so the
   function's contract always holds.
 
+[Unreleased]: https://github.com/kiwagu/entity-id/compare/v1.1.3...HEAD
 [1.1.3]: https://github.com/kiwagu/entity-id/releases/tag/v1.1.3
 [1.1.2]: https://github.com/kiwagu/entity-id/releases/tag/v1.1.2
 [1.1.1]: https://github.com/kiwagu/entity-id/releases/tag/v1.1.1
