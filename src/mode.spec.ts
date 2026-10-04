@@ -146,6 +146,7 @@ describe('fast mode', () => {
       const parsed = parseEntityId(NO_PREFIX);
       expect(parsed.prefix).toBe(NO_PREFIX);
       expect(Number.isNaN(parsed.timeMs)).toBe(true);
+      expect(parsed.iso).toBe('');
     });
   });
 });
@@ -155,6 +156,14 @@ describe('mixed mode (the default)', () => {
     withValidationMode('mixed', () => {
       expect(isEntityId(VALID)).toBe(true);
       expect(isEntityId(WELL_PREFIXED_GARBAGE)).toBe(true);
+    });
+  });
+
+  it('decodes a head-only value to a NaN time and an empty iso', () => {
+    withValidationMode('mixed', () => {
+      const parsed = parseEntityId('usr_abc.def');
+      expect(Number.isNaN(parsed.timeMs)).toBe(true);
+      expect(parsed.iso).toBe('');
     });
   });
 
@@ -276,7 +285,9 @@ describe('mode-independent behaviour', () => {
   it('the registry still routes a known prefix in fast mode', () => {
     const registry = defineEntityPrefixes({ user: 'usr' } as const);
     withValidationMode('fast', () => {
-      expect(registry.kindOf(registry.ids.user.create())).toBe('user');
+      expect(registry.kindOf(registry.factories.userIdFactory.create())).toBe(
+        'user'
+      );
       expect(registry.kindOf('zzz_whatever')).toBeUndefined();
     });
   });
@@ -338,9 +349,9 @@ describe('initialization order does not matter', () => {
   });
 
   it('a registry guard built earlier obeys it too', () => {
-    expect(earlyRegistry.ids.user.is(HALF_VALID)).toBe(true); // mixed
+    expect(earlyRegistry.factories.userIdFactory.is(HALF_VALID)).toBe(true); // mixed
     setValidationMode('full');
-    expect(earlyRegistry.ids.user.is(HALF_VALID)).toBe(false);
+    expect(earlyRegistry.factories.userIdFactory.is(HALF_VALID)).toBe(false);
   });
 
   it('the module-level entityIdSchema follows the mode as well', () => {

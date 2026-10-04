@@ -69,15 +69,17 @@ out.mints = m.isEntityId(id, { mode: 'full' });
 out.defaultMode = m.getValidationMode();
 out.mixedAcceptsHead = m.isEntityId(HALF);
 out.fullRejectsHead = m.isEntityId(HALF, { mode: 'full' });
+out.parseIso = m.parseEntityId(id).iso === new Date(m.parseEntityId(id).timeMs).toISOString();
 out.sql = s.ENTITY_ID_SQL.includes('entity_id_generate');
 
 // The registry must work without the schema module, and withSchemas must
 // bolt the Zod layer back on from the separate entry point.
 const reg = rg.defineEntityPrefixes({ user: 'usr', order: 'ord' });
-out.registryMints = reg.ids.user.is(reg.ids.user.create());
-out.toolkitHasNoSchema = reg.ids.user.schema === undefined;
+out.registryMints = reg.factories.userIdFactory.is(reg.factories.userIdFactory.create());
+out.factoryHasNoSchema = reg.factories.userIdFactory.schema === undefined;
+out.deprecatedIdsAlias = reg.ids.user === reg.factories.userIdFactory;
 const derived = sc.withSchemas(reg);
-out.withSchemas = derived.user.schema.parse(reg.ids.user.create()).startsWith('usr_');
+out.withSchemas = derived.user.schema.parse(reg.factories.userIdFactory.create()).startsWith('usr_');
 out.withSchemasJson = String(derived.user.jsonSchema().pattern).includes('usr_');
 out.tsIndex = s.entityIdTimeIndexSql('events');
 out.tsFn = s.ENTITY_ID_SQL.includes('entity_id_ts_of');
@@ -115,9 +117,15 @@ process.stdout.write(JSON.stringify(out));
     check('default mode is mixed', r.defaultMode, 'mixed');
     check('mixed accepts a prefixed body', r.mixedAcceptsHead, true);
     check('full rejects it', r.fullRejectsHead, false);
+    check('parse carries iso', r.parseIso, true);
     check('sql entry point loads', r.sql, true);
     check('registry entry point works', r.registryMints, true);
-    check('toolkit carries no schema', r.toolkitHasNoSchema, true);
+    check('factory carries no schema', r.factoryHasNoSchema, true);
+    check(
+      'deprecated ids map aliases the factories',
+      r.deprecatedIdsAlias,
+      true
+    );
     check('withSchemas parses', r.withSchemas, true);
     check('withSchemas emits JSON Schema', r.withSchemasJson, true);
     check('migration installs entity_id_ts_of', r.tsFn, true);

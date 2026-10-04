@@ -16,16 +16,18 @@ export const registry = defineEntityPrefixes({
 export type UserId = EntityIdOf<typeof registry.prefixes, 'user'>;
 export type OrderId = EntityIdOf<typeof registry.prefixes, 'order'>;
 
-const { user, order } = registry.ids;
+// Each factory is named for what it is, so destructuring it never shadows a
+// `user` or `order` entity elsewhere in the same scope.
+const { userIdFactory, orderIdFactory } = registry.factories;
 
-const userId = user.create();
-const orderId = order.create();
-console.log('user id           ', userId);
-console.log('order id          ', orderId);
+const userId = userIdFactory.create();
+const orderId = orderIdFactory.create();
+console.log('user id                   ', userId);
+console.log('order id                  ', orderId);
 
 // Each kind guards its own ids.
-console.log('user.is(userId)   ', user.is(userId));
-console.log('order.is(userId)  ', order.is(userId));
+console.log('userIdFactory.is(userId)  ', userIdFactory.is(userId));
+console.log('orderIdFactory.is(userId) ', orderIdFactory.is(userId));
 
 // And the compiler enforces the same distinction, so this never reaches
 // runtime in the first place:
@@ -35,15 +37,19 @@ function chargeOrder(id: OrderId): string {
 // @ts-expect-error a UserId is not an OrderId
 chargeOrder(userId);
 
-console.log('charge            ', chargeOrder(orderId));
+console.log('charge                    ', chargeOrder(orderId));
 
 // Routing an unknown id back to its kind.
-console.log('kindOf(userId)    ', registry.kindOf(userId));
-console.log('kindOf(foreign)   ', registry.kindOf('zzz_unregistered'));
+console.log('kindOf(userId)            ', registry.kindOf(userId));
+console.log('kindOf(foreign)           ', registry.kindOf('zzz_unregistered'));
 
 // A duplicate prefix is a startup error, naming both claimants.
 try {
   defineEntityPrefixes({ program: 'prg', progress: 'prg' } as const);
 } catch (error) {
-  console.log('duplicate rejected', (error as Error).message.slice(0, 72), '…');
+  console.log(
+    'duplicate rejected        ',
+    (error as Error).message.slice(0, 72),
+    '…'
+  );
 }

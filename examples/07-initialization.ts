@@ -86,7 +86,7 @@ const publicEndpoint = bindValidationMode('full', async (payload: string) => {
 // Internal worker reading rows from a column that already has the CHECK
 // constraint: nothing left to validate, so skip it.
 const internalWorker = bindValidationMode('fast', async (rows: string[]) => {
-  return rows.filter((row) => registry.ids.user.is(row)).length;
+  return rows.filter((row) => registry.factories.userIdFactory.is(row)).length;
 });
 
 async function demonstrateLayering(): Promise<void> {

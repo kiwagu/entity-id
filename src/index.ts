@@ -97,6 +97,7 @@ export {
 
 export {
   defineEntityPrefixes,
+  type EntityIdFactory,
   type EntityIdOf,
   type EntityIdRegistry,
   type EntityIdToolkit,

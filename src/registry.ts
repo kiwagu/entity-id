@@ -12,7 +12,8 @@ import { EntityIdError, normalizePrefix, PREFIX_RE } from './prefix.js';
 
 /**
  * The entity-prefix registry: one place that maps every entity kind in an
- * application to its wire prefix, and derives a typed toolkit from that map.
+ * application to its wire prefix, and derives a typed id factory per kind
+ * from that map.
  *
  * @module
  */
@@ -42,7 +43,7 @@ export type EntityIdOf<
 > = BrandedEntityId<K>;
 
 /**
- * The create/guard/assert/schema toolkit bound to a single entity kind.
+ * The create/guard/assert/brand id factory bound to a single entity kind.
  *
  * Every member is branded to that kind's id type, so mixing two kinds is a
  * compile-time error.
@@ -52,11 +53,11 @@ export type EntityIdOf<
  *
  * @public
  */
-export type EntityIdToolkit<
+export type EntityIdFactory<
   TMap extends EntityPrefixMap,
   K extends keyof TMap & string,
 > = Readonly<{
-  /** The entity kind this toolkit is bound to. */
+  /** The entity kind this factory is bound to. */
   kind: K;
   /** The registered wire prefix, for example `'usr'`. */
   prefix: TMap[K];
@@ -89,7 +90,23 @@ export type EntityIdToolkit<
 }>;
 
 /**
- * A registry: the prefix map plus the derived per-kind toolkits and lookup
+ * The per-kind id factory under its former name.
+ *
+ * @deprecated Renamed to {@link EntityIdFactory}; removal planned for the next
+ * major.
+ *
+ * @typeParam TMap - The prefix map the kind belongs to.
+ * @typeParam K - The entity kind.
+ *
+ * @public
+ */
+export type EntityIdToolkit<
+  TMap extends EntityPrefixMap,
+  K extends keyof TMap & string,
+> = EntityIdFactory<TMap, K>;
+
+/**
+ * A registry: the prefix map plus the derived per-kind id factories and lookup
  * helpers.
  *
  * @typeParam TMap - The prefix map passed to {@link defineEntityPrefixes}.
@@ -103,8 +120,30 @@ export type EntityIdRegistry<TMap extends EntityPrefixMap> = Readonly<{
   kinds: readonly (keyof TMap & string)[];
   /** Every registered prefix, sorted. */
   allPrefixes: readonly string[];
-  /** One toolkit per kind: `registry.ids.user.create()`. */
-  ids: { readonly [K in keyof TMap & string]: EntityIdToolkit<TMap, K> };
+  /**
+   * One factory per kind under a name that says what it is, e.g.
+   * `registry.factories.userIdFactory.create()`. Destructure without
+   * shadowing your entities:
+   * `const { userIdFactory, orderIdFactory } = registry.factories;`.
+   *
+   * The key is the kind name followed by `IdFactory`, so a kind named
+   * `userId` yields `userIdIdFactory`; name kinds after the entity (`user`),
+   * not after its id.
+   */
+  factories: {
+    readonly [K in keyof TMap & string as `${K}IdFactory`]: EntityIdFactory<
+      TMap,
+      K
+    >;
+  };
+  /**
+   * One factory per kind, keyed by the bare kind name.
+   *
+   * @deprecated Use {@link EntityIdRegistry.factories}: `registry.ids.user` is
+   * now `registry.factories.userIdFactory`. Kept through 1.x; removal planned
+   * for the next major.
+   */
+  ids: { readonly [K in keyof TMap & string]: EntityIdFactory<TMap, K> };
   /** The registered prefix for a kind. Unknown kinds do not compile. */
   prefixFor: <K extends keyof TMap & string>(kind: K) => TMap[K];
   /** Whether a string is a registered kind, narrowing to the key union. */
@@ -137,10 +176,10 @@ const RESERVED_KIND_NAMES: ReadonlySet<string> = new Set([
   'prototype',
 ]);
 
-function makeToolkit<
+function makeFactory<
   TMap extends EntityPrefixMap,
   K extends keyof TMap & string,
->(kind: K, prefix: TMap[K]): EntityIdToolkit<TMap, K> {
+>(kind: K, prefix: TMap[K]): EntityIdFactory<TMap, K> {
   return Object.freeze({
     kind,
     prefix,
@@ -183,11 +222,11 @@ function makeToolkit<
  * export type UserId = EntityIdOf<typeof registry.prefixes, 'user'>;
  * export type OrderId = EntityIdOf<typeof registry.prefixes, 'order'>;
  *
- * const { user, order } = registry.ids;
+ * const { userIdFactory, orderIdFactory } = registry.factories;
  *
- * const id = user.create();          // UserId
- * user.is(id);                       // true
- * order.assert(id);                  // throws: wrong prefix
+ * const id = userIdFactory.create(); // UserId
+ * userIdFactory.is(id);              // true
+ * orderIdFactory.assert(id);         // throws: wrong prefix
  * registry.kindOf(id);               // 'user'
  * ```
  *
@@ -233,14 +272,20 @@ export function defineEntityPrefixes<const TMap extends EntityPrefixMap>(
   const kinds = Object.freeze(entries.map(([kind]) => kind));
   const allPrefixes = Object.freeze(entries.map(([, prefix]) => prefix).sort());
 
+  // Each factory is built once; `factories` and the deprecated `ids` map hold
+  // the same frozen objects under different keys.
   const ids = Object.freeze(
     Object.fromEntries(
       entries.map(([kind, prefix]) => [
         kind,
-        makeToolkit<TMap, typeof kind>(kind, prefix as TMap[typeof kind]),
+        makeFactory<TMap, typeof kind>(kind, prefix as TMap[typeof kind]),
       ])
     )
-  ) as { readonly [K in keyof TMap & string]: EntityIdToolkit<TMap, K> };
+  ) as EntityIdRegistry<TMap>['ids'];
+
+  const factories = Object.freeze(
+    Object.fromEntries(entries.map(([kind]) => [`${kind}IdFactory`, ids[kind]]))
+  ) as EntityIdRegistry<TMap>['factories'];
 
   const kindForPrefix = (prefix: string): (keyof TMap & string) | undefined =>
     seen.get(prefix);
@@ -249,6 +294,7 @@ export function defineEntityPrefixes<const TMap extends EntityPrefixMap>(
     prefixes,
     kinds,
     allPrefixes,
+    factories,
     ids,
     prefixFor: <K extends keyof TMap & string>(kind: K) => prefixes[kind],
     isKind: (value: string): value is keyof TMap & string =>

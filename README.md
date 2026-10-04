@@ -1,14 +1,15 @@
 # entity-id
 
-Prefixed, timestamped entity identifiers with branded TypeScript types, a Zod
-validator and a matching PostgreSQL generator.
+A DX-friendly entity ID toolkit: prefixed, self-describing IDs with branded
+TypeScript types, Zod schemas, a prefix registry and a matching Postgres
+generator. Isomorphic and ESM-only; ~3 KB until you import the schemas.
 
 ```
 usr_a1b2c3d4e5f6g7h8.01jd8x2p4q
-└─┬─┘ └──────┬──────┘ └────┬───┘
-  │          │             └── ULID time segment  (10 chars, ms since epoch)
-  │          └──────────────── ULID randomness    (16 chars, 80 bits)
-  └─────────────────────────── entity-type prefix (2–16 chars)
+└┬┘ └──────┬───────┘ └────┬───┘
+ │         │              └── ULID time segment  (10 chars, ms since epoch)
+ │         └───────────────── ULID randomness    (16 chars, 80 bits)
+ └─────────────────────────── entity-type prefix (2–16 chars)
 ```
 
 An id says what it points at (`usr_…` is a user, `ord_…` is an order), is
@@ -16,8 +17,6 @@ globally unique, and carries its own creation time. Because the type is
 *branded*, the compiler will not let a `UserId` reach a slot expecting an
 `OrderId` — and because the same contract is implemented in SQL, an id minted by
 Postgres validates in TypeScript and vice versa.
-
-Runs unchanged in Node, Bun, Deno, edge workers and the browser.
 
 ## Install
 
@@ -27,18 +26,13 @@ npm install entity-id
 
 `ulid` and `zod` are regular dependencies — nothing else to install.
 
-**TypeScript 5.4 or newer.** Verified by type-checking a consumer against 5.4,
-5.5, 5.6, 5.9 and 7.0 with `skipLibCheck` off. The floor comes from `zod`,
-whose declarations use `NoInfer` (added in TS 5.4); this package's own branded
-types need 5.0+ for `const` type parameters. JavaScript consumers need no
-TypeScript at all.
+**TypeScript 5.4 or newer**: the floor is set by `zod`'s declarations, which use
+`NoInfer`, while this package's own types need only 5.0. JavaScript consumers
+need no TypeScript at all.
 
-The declarations already type-check cleanly under **TypeScript 7.0**, so an
-upgrade needs no change here.
-
-**Runtimes:** Node 18+, Bun, Deno, edge workers and the browser. The main entry
-point is isomorphic; only `entity-id/async` requires a Node-style runtime, as it
-uses `AsyncLocalStorage`.
+**Runtimes:** Node 20.19+, Bun, Deno, edge workers and the browser. The main
+entry point is isomorphic; only `entity-id/async` requires a Node-style runtime,
+as it uses `AsyncLocalStorage`.
 
 ## Quick start
 
@@ -56,7 +50,8 @@ parseEntityId(id);
 //   rand:   'a1b2c3d4e5f6g7h8',
 //   ts:     '01jd8x2p4q',
 //   ulid:   '01JD8X2P4QA1B2C3D4E5F6G7H8',
-//   timeMs: 1731412345678,
+//   timeMs: 1732244494487,
+//   iso:    '2024-11-22T03:01:34.487Z',
 // }
 ```
 
@@ -92,17 +87,17 @@ Compared to the alternatives:
 | | UUIDv4 | ULID | `entity-id` |
 | --- | --- | --- | --- |
 | Globally unique | yes | yes | yes |
-| Carries creation time | no | yes | yes |
+| Carries creation time | **no** | yes | yes |
 | Says what it identifies | no | no | **yes** |
 | Distinct type per entity | no | no | **yes** |
 | Wrong-kind id caught at runtime | no | no | **yes** |
-| Database-native generator | yes | no | **yes** |
+| Database-native generator | yes | **no** | yes |
 
 ## Registry: one place for every prefix
 
 Declare each entity kind once. The registry validates the map eagerly — a
 malformed or duplicated prefix throws at startup rather than producing an
-un-routable id later — and derives a typed toolkit per kind.
+un-routable id later — and derives a typed id factory per kind.
 
 ```ts
 import { defineEntityPrefixes, type EntityIdOf } from 'entity-id';
@@ -116,14 +111,19 @@ export const registry = defineEntityPrefixes({
 export type UserId = EntityIdOf<typeof registry.prefixes, 'user'>;
 export type OrderId = EntityIdOf<typeof registry.prefixes, 'order'>;
 
-const { user, order } = registry.ids;
+const { userIdFactory, orderIdFactory } = registry.factories;
 
-const id = user.create();        // UserId
-user.is(id);                     // true  — type guard
-order.is(id);                    // false — a different kind
-order.assert(id);                // throws: expected prefix "ord_"
-registry.kindOf(id);             // 'user'
+const id = userIdFactory.create(); // UserId
+userIdFactory.is(id);              // true  — type guard
+orderIdFactory.is(id);             // false — a different kind
+orderIdFactory.assert(id);         // throws: expected prefix "ord_"
+registry.kindOf(id);               // 'user'
 ```
+
+Each factory is keyed `<kind>IdFactory`, so destructuring one never shadows a
+`user` or `order` variable beside it. `registry.ids`, keyed by the bare kind,
+still works but is deprecated in favour of `registry.factories` and will go in
+the next major.
 
 Duplicate prefixes are rejected with both claimants named, because an ambiguous
 prefix makes an id impossible to route back to one kind:
@@ -133,16 +133,18 @@ defineEntityPrefixes({ program: 'prg', progress: 'prg' });
 // EntityIdError: Duplicate entity prefix "prg": claimed by both "program" and "progress".
 ```
 
-### The per-kind toolkit
+### The per-kind factory
 
 | Member | Purpose |
 | --- | --- |
+| `kind` | The entity kind the factory is bound to |
+| `prefix` | The registered wire prefix, typed as its literal (`'usr'`) |
 | `create(options?)` | Mint a fresh branded id |
 | `is(value)` | Type guard narrowing to this kind |
 | `assert(value)` | Throwing parse at a boundary |
 | `brand(value)` | Unchecked cast, for trusted construction |
 
-The toolkit carries no Zod. Schemas are opt-in through `withSchemas`, so an
+A factory carries no Zod. Schemas are opt-in through `withSchemas`, so an
 application that only mints and checks ids never bundles a validator library it
 does not call — see [Module format and bundle cost](#module-format-and-bundle-cost).
 
@@ -154,7 +156,7 @@ const schemas = withSchemas(registry);
 
 | Member | Purpose |
 | --- | --- |
-| `schemas.user.schema` | Strict Zod schema (full format) |
+| `schemas.user.schema` | Zod schema, as strict as the active mode |
 | `schemas.user.prefixSchema` | Lenient schema (prefix only) |
 | `schemas.user.jsonSchema(io?)` | JSON Schema for a contract |
 
@@ -167,9 +169,9 @@ assignable to each other:
 ```ts
 declare function getUser(id: UserId): Promise<User>;
 
-getUser(orderId);        // compile error: OrderId is not a UserId
-getUser('usr_whatever'); // compile error: string is not a UserId
-getUser(user.assert(x)); // fine — parsed at the boundary
+getUser(orderId);                 // compile error: OrderId is not a UserId
+getUser('usr_whatever');          // compile error: string is not a UserId
+getUser(userIdFactory.assert(x)); // fine — parsed at the boundary
 ```
 
 The only ways to obtain a branded value are minting, parsing, asserting, or the
@@ -230,9 +232,9 @@ isEntityId(value, { mode: 'fast' }); // just this call
 
 | Mode | Checks | Cost | Use it for |
 | --- | --- | --- | --- |
-| `fast` | nothing | ~8 ns | data already known good — rows from a column with the `CHECK`, ids this process minted |
+| `fast` | nothing | ~4 ns | data already known good — rows from a column with the `CHECK`, ids this process minted |
 | `mixed` *(default)* | the `<prefix>_` head | ~28 ns | **where business logic starts** — catches a wrong-kind id in the wrong slot |
-| `full` | prefix, both segment lengths, the Crockford alphabet, overall shape | ~63 ns | trust boundaries — HTTP requests, webhooks, imports |
+| `full` | prefix, both segment lengths, the Crockford alphabet, overall shape | ~65 ns | trust boundaries — HTTP requests, webhooks, imports |
 
 A mode is a *profile*, not merely a strictness level: it also selects the
 decoding path (`fast` and `mixed` split the string; `full` matches the regular
@@ -407,11 +409,15 @@ the ratios are the point):
 
 | Operation | `fast` | `mixed` | `full` |
 | --- | --- | --- | --- |
-| `isEntityId` | 132 M/s | 36 M/s | 16 M/s |
-| `assertEntityIdWithPrefix` | 97 M/s | 13 M/s | 1.4 M/s |
-| `parseEntityId` | 7.6 M/s | 7.6 M/s | 2.0 M/s |
+| `isEntityId` | 237 M/s | 36 M/s | 15 M/s |
+| `assertEntityIdWithPrefix` | 208 M/s | 13 M/s | 1.4 M/s |
+| `parseEntityId` | 1.8 M/s | 1.7 M/s | 0.95 M/s |
 
-Generation runs at **~2.0 M ids/s** (monotonic, the default), against 10.8 M/s
+`parseEntityId` renders the ISO time eagerly, while `entityIdToTimeMs`,
+`normalizeEntityId` and `compareEntityIds` decode without it: `entityIdToTimeMs`
+runs at 7.3 M/s in `fast` mode.
+
+Generation runs at **~1.7 M ids/s** (monotonic, the default), against 10.4 M/s
 for `crypto.randomUUID()` — the gap is the price of an embedded timestamp and a
 prefix.
 
@@ -427,7 +433,7 @@ module state duplicated across entry points.
 
 | Command | What it proves |
 | --- | --- |
-| `npm run check` | format, lint, types, type-level assertions, 253 unit tests |
+| `npm run check` | format, lint, types, type-level assertions, 316 unit tests |
 | `npm run verify:package` | the packed tarball works when installed, from ESM **and** CommonJS |
 | `npm run verify:bundle` | a consumer who never touches Zod does not bundle it |
 | `npm run verify:types` | the branded types reject what they must, from a consumer's seat |
@@ -436,8 +442,10 @@ module state duplicated across entry points.
 | `scripts/verify-sql-crosscheck.sh` | SQL and TypeScript agree, against a live PostgreSQL |
 | `npm run bench` | throughput per mode, against `ulid` and `randomUUID` baselines |
 
-All of them run in CI, plus a Node matrix (18/20/22/24) and a TypeScript matrix
-(5.4/5.5/5.9/7.0).
+CI runs every one of them except the benchmark and the Prettier step of
+`npm run check`, which run locally. It also runs the tests on a Node matrix
+(20/22/24) and type-checks a consumer against a TypeScript matrix
+(5.4/5.5/5.9/7.0, `skipLibCheck` off).
 
 ## Module format and bundle cost
 
@@ -453,26 +461,21 @@ records. Dropping the CommonJS build also removes the dual-package hazard,
 where a consumer could otherwise hold two copies of the module-level validation
 mode and have `entity-id/async` write to one while the validators read another.
 
-Zod is a dependency, but you only bundle it if you use it. The schema and
-registry modules are emitted as their own chunks, so their Zod import does not
-travel with the main entry:
+Zod is a dependency, but you only bundle it if you use it. The schema module is
+emitted as its own chunk, so its Zod import travels with neither the main entry
+nor the registry:
 
 | What you import | Bundled (gzip) | Zod included |
 | --- | --- | --- |
 | `createEntityId`, `isEntityId`, `parseEntityId` | ~2.5 KB | no |
-| `defineEntityPrefixes` and the per-kind toolkit | ~3.1 KB | no |
-| `entity-id/schema` — `entityIdSchema`, `withSchemas` | ~88 KB | yes |
+| `defineEntityPrefixes` and the per-kind factories | ~3.2 KB | no |
+| `entity-id/schema` — `entityIdSchema`, `withSchemas` | ~93 KB | yes |
 
 `npm run verify:bundle` measures this against the packed tarball and fails if
-the main entry ever regains a top-level Zod import.
-
-The registry carries no Zod at all: `defineEntityPrefixes` gives you `create`,
-`is`, `assert` and `brand`, and schemas come from `withSchemas` in
-`entity-id/schema`. Keeping them in separate modules is what makes the
-separation real — a lazy getter on the toolkit would not have worked, because a
-static import pulls Zod into the module graph however the value is reached.
-Measured: the registry costs 3.1 KB gzip, against 89.1 KB when it built schemas
-itself.
+the main entry ever regains a top-level Zod import. The split needs a separate
+module, not a lazy getter on the factory: a static import pulls Zod into the
+module graph however the value is reached. While the registry still built
+schemas itself, it bundled to 89.1 KB gzip (measured with zod 4.5).
 
 ## Security
 
@@ -495,17 +498,17 @@ guarantees, and what it asks of you:
 - **No runtime dependency has install scripts**, and the dependency tree is two
   packages deep with nothing transitive.
 
-**Where the responsibility is yours:** in `fast` mode nothing is validated, so
-`assert()` brands a value it never checked. Use it only for data whose
-provenance already guarantees the format. The default `mixed` mode is safe.
+**Where the responsibility is yours:** in `fast` mode `assert()` brands a value
+it never checked, and the default `mixed` checks only the `<prefix>_` head — see
+[The honest caveat about `fast`](#the-honest-caveat-about-fast). Where a value
+crosses a trust boundary, ask for `full`.
 
 Adversarial cases are pinned in `src/security.spec.ts`, so a regression fails
 the build rather than shipping.
 
 ## Design trade-offs
 
-Three decisions are deliberate, and worth stating plainly rather than leaving
-to be discovered:
+Three decisions are deliberate:
 
 **The id string is not chronologically sortable.** The randomness segment comes
 before the timestamp, so `ORDER BY id` is not `ORDER BY created_at`. Formats
@@ -534,9 +537,9 @@ serious. The speed of the default monotonic path was never in question.
 
 ## Ordering
 
-The randomness segment precedes the timestamp, so an id string is **not**
-chronologically sortable. That is a deliberate trade-off (see below), not a
-dead end — chronological order is available, and cheaply.
+An id string is **not** chronologically sortable — a deliberate trade-off (see
+[Design trade-offs](#design-trade-offs)), not a dead end: chronological order is
+available, and cheaply.
 
 In application code, sort by the embedded time explicitly:
 
@@ -680,7 +683,8 @@ the types `ValidationMode`, `ValidationDepth`, `ValidationOptions`,
 `ensureUniquePrefix`, `PREFIX_PATTERN`, `PREFIX_RE`
 
 **Registry** — `defineEntityPrefixes`, and the types `EntityIdRegistry`,
-`EntityIdToolkit`, `EntityIdOf`, `EntityPrefixMap`
+`EntityIdFactory` (deprecated alias: `EntityIdToolkit`), `EntityIdOf`,
+`EntityPrefixMap`
 
 **SQL** (`entity-id/sql`) — `ENTITY_ID_SQL`, `entityIdColumnSql`,
 `entityIdDefaultSql`, `entityIdCheckSql`

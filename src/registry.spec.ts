@@ -3,7 +3,12 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createEntityId, type EntityId } from './entity-id.js';
 import { withValidationMode } from './mode.js';
 import { EntityIdError } from './prefix.js';
-import { defineEntityPrefixes, type EntityIdOf } from './registry.js';
+import {
+  defineEntityPrefixes,
+  type EntityIdFactory,
+  type EntityIdOf,
+  type EntityIdToolkit,
+} from './registry.js';
 import { withSchemas } from './schema.js';
 
 const registry = defineEntityPrefixes({
@@ -49,8 +54,6 @@ describe('defineEntityPrefixes', () => {
 
   it('is frozen against accidental mutation', () => {
     expect(Object.isFrozen(registry)).toBe(true);
-    expect(Object.isFrozen(registry.ids)).toBe(true);
-    expect(Object.isFrozen(registry.ids.user)).toBe(true);
   });
 });
 
@@ -76,8 +79,12 @@ describe('registry lookups', () => {
   });
 
   it('kindOf routes a real id back to its kind', () => {
-    expect(registry.kindOf(registry.ids.user.create())).toBe('user');
-    expect(registry.kindOf(registry.ids.orderLine.create())).toBe('orderLine');
+    expect(registry.kindOf(registry.factories.userIdFactory.create())).toBe(
+      'user'
+    );
+    expect(
+      registry.kindOf(registry.factories.orderLineIdFactory.create())
+    ).toBe('orderLine');
   });
 
   it('kindOf returns undefined for an unregistered or malformed id', () => {
@@ -94,7 +101,7 @@ describe('registry lookups', () => {
   });
 
   it('assertKnown accepts a registered id and rejects others', () => {
-    const id = registry.ids.order.create();
+    const id = registry.factories.orderIdFactory.create();
     expect(registry.assertKnown(id)).toBe(id);
     // An unregistered prefix is rejected in every mode: that check is the
     // registry's own, not the validator's.
@@ -112,39 +119,79 @@ describe('registry lookups', () => {
   });
 });
 
-describe('per-kind toolkit', () => {
-  const { user, order } = registry.ids;
+describe('per-kind factories', () => {
+  it('keys every factory by its kind followed by IdFactory', () => {
+    expect(Object.keys(registry.factories).sort()).toEqual([
+      'orderIdFactory',
+      'orderLineIdFactory',
+      'userIdFactory',
+    ]);
+  });
+
+  it('holds the very same objects as the deprecated ids map', () => {
+    for (const kind of registry.kinds) {
+      expect(registry.factories[`${kind}IdFactory` as const]).toBe(
+        registry.ids[kind]
+      );
+    }
+  });
+
+  it('is frozen, map and factories alike', () => {
+    expect(Object.isFrozen(registry.factories)).toBe(true);
+    for (const factory of Object.values(registry.factories)) {
+      expect(Object.isFrozen(factory)).toBe(true);
+    }
+  });
+
+  it('derives its keys and member types from the prefix map', () => {
+    expectTypeOf(registry.factories).toHaveProperty('userIdFactory');
+    expectTypeOf<keyof typeof registry.factories>().toEqualTypeOf<
+      'userIdFactory' | 'orderIdFactory' | 'orderLineIdFactory'
+    >();
+    expectTypeOf(
+      registry.factories.userIdFactory.create()
+    ).toEqualTypeOf<UserId>();
+    expectTypeOf(
+      registry.factories.userIdFactory.prefix
+    ).toEqualTypeOf<'usr'>();
+  });
+});
+
+describe('per-kind factory', () => {
+  const { userIdFactory, orderIdFactory } = registry.factories;
 
   it('carries its kind and prefix', () => {
-    expect(user.kind).toBe('user');
-    expect(user.prefix).toBe('usr');
-    expectTypeOf(user.prefix).toEqualTypeOf<'usr'>();
+    expect(userIdFactory.kind).toBe('user');
+    expect(userIdFactory.prefix).toBe('usr');
+    expectTypeOf(userIdFactory.prefix).toEqualTypeOf<'usr'>();
   });
 
   it('creates ids with the right prefix', () => {
-    const id = user.create();
+    const id = userIdFactory.create();
     expect(id.startsWith('usr_')).toBe(true);
-    expect(user.is(id)).toBe(true);
-    expect(order.is(id)).toBe(false);
+    expect(userIdFactory.is(id)).toBe(true);
+    expect(orderIdFactory.is(id)).toBe(false);
   });
 
   it('honours create options', () => {
     const timeMs = 1_700_000_000_000;
-    const id = user.create({ timeMs, monotonic: false });
+    const id = userIdFactory.create({ timeMs, monotonic: false });
     expect(registry.kindOf(id)).toBe('user');
   });
 
   it('asserts at a boundary', () => {
-    const id = user.create();
-    expect(user.assert(id)).toBe(id);
-    expect(() => order.assert(id)).toThrow(/prefix "ord_"/);
-    expect(() => user.assert('garbage')).toThrow(EntityIdError);
+    const id = userIdFactory.create();
+    expect(userIdFactory.assert(id)).toBe(id);
+    expect(() => orderIdFactory.assert(id)).toThrow(/prefix "ord_"/);
+    expect(() => userIdFactory.assert('garbage')).toThrow(EntityIdError);
   });
 
   it('parses through its strict schema', () => {
-    const id = user.create();
+    const id = userIdFactory.create();
     expect(schemas.user.schema.parse(id)).toBe(id);
-    expect(schemas.user.schema.safeParse(order.create()).success).toBe(false);
+    expect(schemas.user.schema.safeParse(orderIdFactory.create()).success).toBe(
+      false
+    );
   });
 
   it('tolerates placeholders through its prefix schema', () => {
@@ -158,19 +205,21 @@ describe('per-kind toolkit', () => {
     const output = schemas.user.jsonSchema();
     expect(output.type).toBe('string');
     expect(String(output.pattern)).toContain('usr_');
-    expect(new RegExp(String(output.pattern)).test(user.create())).toBe(true);
+    expect(
+      new RegExp(String(output.pattern)).test(userIdFactory.create())
+    ).toBe(true);
 
     const input = schemas.user.jsonSchema('input');
     expect(String(input.pattern)).toContain('A-HJKMNP-TV-Z');
   });
 
   it('brands without validating, for trusted construction', () => {
-    expect(user.brand('usr_seeded')).toBe('usr_seeded');
+    expect(userIdFactory.brand('usr_seeded')).toBe('usr_seeded');
   });
 
   it('keeps kinds mutually unassignable at compile time', () => {
-    const userId = user.create();
-    const orderId = order.create();
+    const userId = userIdFactory.create();
+    const orderId = orderIdFactory.create();
 
     expectTypeOf(userId).toEqualTypeOf<UserId>();
     expectTypeOf(orderId).toEqualTypeOf<OrderId>();
@@ -183,22 +232,22 @@ describe('per-kind toolkit', () => {
   });
 
   it('narrows through its type guard', () => {
-    const value: string = user.create();
-    if (user.is(value)) {
+    const value: string = userIdFactory.create();
+    if (userIdFactory.is(value)) {
       expectTypeOf(value).toExtend<UserId>();
     }
   });
 });
 
 describe('the registry stays free of schemas', () => {
-  // The toolkit is deliberately Zod-free: `registry.ts` must not import
+  // The factory is deliberately Zod-free: `registry.ts` must not import
   // `schema.ts` at all, so an application that only mints and checks ids does
   // not bundle a validator library it never calls. Schemas come from
   // `withSchemas` in `entity-id/schema`, and `scripts/verify-bundle.mjs`
   // measures that the separation holds in the packed artifact.
-  it('exposes only id operations on a toolkit', () => {
+  it('exposes only id operations on a factory', () => {
     const registry = defineEntityPrefixes({ user: 'usr' });
-    expect(Object.keys(registry.ids.user).sort()).toEqual([
+    expect(Object.keys(registry.factories.userIdFactory).sort()).toEqual([
       'assert',
       'brand',
       'create',
@@ -212,7 +261,7 @@ describe('the registry stays free of schemas', () => {
     const registry = defineEntityPrefixes({ user: 'usr', order: 'ord' });
     const schemas = withSchemas(registry);
 
-    const id = registry.ids.user.create();
+    const id = registry.factories.userIdFactory.create();
     expect(schemas.user.schema.parse(id)).toBe(id);
     expect(() => schemas.order.schema.parse(id)).toThrow();
   });
@@ -241,8 +290,26 @@ describe('the registry stays free of schemas', () => {
 describe('registry independence', () => {
   it('supports several registries side by side', () => {
     const other = defineEntityPrefixes({ ticket: 'tkt' } as const);
-    const ticketId = other.ids.ticket.create();
+    const ticketId = other.factories.ticketIdFactory.create();
     expect(other.kindOf(ticketId)).toBe('ticket');
     expect(registry.kindOf(ticketId)).toBeUndefined();
+  });
+});
+
+describe('deprecated ids map', () => {
+  it('keeps minting and guarding until the next major', () => {
+    const id = registry.ids.user.create();
+    expect(id.startsWith('usr_')).toBe(true);
+    expect(registry.ids.user.is(id)).toBe(true);
+    expect(registry.ids.order.is(id)).toBe(false);
+    expect(Object.isFrozen(registry.ids)).toBe(true);
+  });
+});
+
+describe('deprecated EntityIdToolkit type', () => {
+  it('is the same type as EntityIdFactory', () => {
+    expectTypeOf<
+      EntityIdToolkit<typeof registry.prefixes, 'user'>
+    >().toEqualTypeOf<EntityIdFactory<typeof registry.prefixes, 'user'>>();
   });
 });

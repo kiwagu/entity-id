@@ -153,7 +153,7 @@ export type EntityIdParts = Readonly<{
 
 /**
  * A fully decoded entity id: its parts plus the reconstructed ULID and the
- * creation timestamp it encodes.
+ * creation timestamp it encodes, both as milliseconds and as an ISO string.
  *
  * @public
  */
@@ -163,8 +163,17 @@ export type ParsedEntityId = Readonly<
     ulid: string;
     /** Creation time, in milliseconds since the Unix epoch. */
     timeMs: number;
+    /**
+     * Creation time in ISO 8601 form (`new Date(timeMs).toISOString()`), or
+     * `''` when `timeMs` is not finite, which the `fast` and `mixed` modes
+     * produce when decoding a value that is not an id.
+     */
+    iso: string;
   }
 >;
+
+/** The decoded fields that cost almost nothing to produce, without `iso`. */
+type DecodedEntityId = Omit<ParsedEntityId, 'iso'>;
 
 function requiredGroup(
   groups: Record<string, string | undefined> | undefined,
@@ -460,7 +469,7 @@ export function assertEntityId(
 /**
  * Assert that a value is an entity id carrying `prefix`, and return it.
  *
- * For a prefix known at compile time, prefer the toolkit produced by
+ * For a prefix known at compile time, prefer the factory produced by
  * `defineEntityPrefixes`, whose `assert` is branded per kind.
  *
  * @param value - Candidate string.
@@ -509,24 +518,25 @@ export function unsafeBrandEntityId<Brand extends string = 'EntityId'>(
 }
 
 /**
- * Decode an entity id into its parts, ULID and timestamp.
+ * ISO 8601 form of a decoded time, or `''` when it is not finite.
  *
- * @param value - The id to decode.
- * @returns The decoded id, see {@link ParsedEntityId}.
- * @throws {EntityIdError} When the value is not an entity id.
- *
- * @example
- * ```ts
- * parseEntityId('usr_a1b2c3d4e5f6g7h8.01jd8x2p4q');
- * // { prefix: 'usr', rand: 'a1b2…', ts: '01jd…', ulid: '01JD…', timeMs: 1731… }
- * ```
- *
- * @public
+ * No try/catch is needed: a 10-character Crockford time segment decodes to at
+ * most 32^10 (about 1.1e15) ms, inside the +/-8.64e15 range `Date` can
+ * represent, so NaN is the only unrepresentable case.
  */
-export function parseEntityId(
+function isoOf(timeMs: number): string {
+  return Number.isFinite(timeMs) ? new Date(timeMs).toISOString() : '';
+}
+
+/**
+ * Decode an entity id into everything but its ISO time. Building the ISO
+ * string costs several times what the decoding does, so callers that only
+ * need the parts or the time go through here rather than `parseEntityId`.
+ */
+function decodeEntityId(
   value: string,
   options?: ValidationOptions
-): ParsedEntityId {
+): DecodedEntityId {
   const { fastDecode, validation } = resolveModeProfile(options);
 
   if (fastDecode) {
@@ -589,6 +599,37 @@ export function parseEntityId(
 }
 
 /**
+ * Decode an entity id into its parts, ULID and timestamp.
+ *
+ * @param value - The id to decode.
+ * @returns The decoded id, see {@link ParsedEntityId}.
+ * @throws {EntityIdError} When the value is not an entity id.
+ *
+ * @example
+ * ```ts
+ * parseEntityId('usr_a1b2c3d4e5f6g7h8.01jd8x2p4q');
+ * // { prefix: 'usr', rand: 'a1b2…', ts: '01jd…', ulid: '01JD…',
+ * //   timeMs: 1732…, iso: '2024-11-22…Z' }
+ * ```
+ *
+ * @public
+ */
+export function parseEntityId(
+  value: string,
+  options?: ValidationOptions
+): ParsedEntityId {
+  const decoded = decodeEntityId(value, options);
+  return {
+    prefix: decoded.prefix,
+    rand: decoded.rand,
+    ts: decoded.ts,
+    ulid: decoded.ulid,
+    timeMs: decoded.timeMs,
+    iso: isoOf(decoded.timeMs),
+  };
+}
+
+/**
  * Parse an entity id, returning `undefined` instead of throwing.
  *
  * @param value - Candidate string.
@@ -619,7 +660,7 @@ export function safeParseEntityId(
 export function normalizeEntityId(value: string): EntityId {
   // Always strict, in every mode: this function PRODUCES the canonical form,
   // so it cannot trust an unvalidated input the way a guard may choose to.
-  const parsed = parseEntityId(value, { mode: 'full' });
+  const parsed = decodeEntityId(value, { mode: 'full' });
   return `${parsed.prefix}_${parsed.rand}.${parsed.ts}` as EntityId;
 }
 
@@ -636,7 +677,7 @@ export function entityIdPrefix(
   value: string,
   options?: ValidationOptions
 ): string {
-  return parseEntityId(value, options).prefix;
+  return decodeEntityId(value, options).prefix;
 }
 
 /**
@@ -662,12 +703,7 @@ export type EntityIdTuple = readonly [
  */
 export function entityIdToTuple(entityId: string): EntityIdTuple {
   const parsed = parseEntityId(entityId);
-  return [
-    parsed.prefix,
-    parsed.rand,
-    new Date(parsed.timeMs).toISOString(),
-    parsed.timeMs,
-  ] as const;
+  return [parsed.prefix, parsed.rand, parsed.iso, parsed.timeMs] as const;
 }
 
 /**
@@ -684,7 +720,7 @@ export function entityIdToTimeMs(
   entityId: string,
   options?: ValidationOptions
 ): number {
-  return parseEntityId(entityId, options).timeMs;
+  return decodeEntityId(entityId, options).timeMs;
 }
 
 /**
@@ -759,7 +795,7 @@ export function entityIdTsToTimeMs(ts: string): number {
  * @public
  */
 export function toUlid(entityId: string): string {
-  return parseEntityId(entityId).ulid;
+  return decodeEntityId(entityId).ulid;
 }
 
 /**

@@ -101,8 +101,8 @@ bench('Generation', 'createEntityId (monotonic)', () => createEntityId('usr'));
 bench('Generation', 'createEntityId (random)', () =>
   createEntityId('usr', { monotonic: false })
 );
-bench('Generation', 'registry toolkit .create()', () =>
-  registry.ids.user.create()
+bench('Generation', 'registry factory .create()', () =>
+  registry.factories.userIdFactory.create()
 );
 bench('Generation', 'baseline: ulid()', () => ulidCanonical());
 bench('Generation', 'baseline: ulid() monotonic', () => ulidMonotonic());
@@ -121,8 +121,8 @@ for (const mode of ['fast', 'mixed', 'full'] as const) {
   bench(`Validation — ${mode}`, 'isEntityIdWithPrefix (swapped)', () =>
     withValidationMode(mode, () => isEntityIdWithPrefix(WRONG, 'usr'))
   );
-  bench(`Validation — ${mode}`, 'toolkit .is()', () =>
-    withValidationMode(mode, () => registry.ids.user.is(ID))
+  bench(`Validation — ${mode}`, 'factory .is()', () =>
+    withValidationMode(mode, () => registry.factories.userIdFactory.is(ID))
   );
 }
 
@@ -137,7 +137,7 @@ for (const mode of ['fast', 'mixed', 'full'] as const) {
   );
 }
 
-for (const mode of ['fast', 'full'] as const) {
+for (const mode of ['fast', 'mixed', 'full'] as const) {
   bench(`Decoding — ${mode}`, 'parseEntityId', () =>
     parseEntityId(ID, { mode })
   );
