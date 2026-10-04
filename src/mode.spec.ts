@@ -159,6 +159,14 @@ describe('mixed mode (the default)', () => {
     });
   });
 
+  it('decodes a head-only value to a NaN time and an empty iso', () => {
+    withValidationMode('mixed', () => {
+      const parsed = parseEntityId('usr_abc.def');
+      expect(Number.isNaN(parsed.timeMs)).toBe(true);
+      expect(parsed.iso).toBe('');
+    });
+  });
+
   it('rejects a value with no valid prefix head', () => {
     withValidationMode('mixed', () => {
       expect(isEntityId(NO_PREFIX)).toBe(false);

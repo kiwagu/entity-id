@@ -165,8 +165,8 @@ export type ParsedEntityId = Readonly<
     timeMs: number;
     /**
      * Creation time in ISO 8601 form (`new Date(timeMs).toISOString()`), or
-     * `''` when `timeMs` is not finite, which only `fast`-mode decoding of a
-     * value that is not an id can produce.
+     * `''` when `timeMs` is not finite, which the `fast` and `mixed` modes
+     * produce when decoding a value that is not an id.
      */
     iso: string;
   }

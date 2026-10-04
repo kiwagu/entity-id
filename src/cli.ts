@@ -103,7 +103,7 @@ export function run(argv: readonly string[]): void {
       const value = rest[0];
       if (!value) fail('missing <id>');
       try {
-        out(JSON.stringify(parseEntityId(value), null, 2));
+        out(JSON.stringify(parseEntityId(value, { mode: 'full' }), null, 2));
       } catch (error) {
         fail(messageOf(error));
       }
